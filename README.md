@@ -115,14 +115,14 @@
 
 ## Структура
 
-Планируемая:
+Обоснование и правила — в [ADR-0001](docs/adr/0001-monorepo-and-structure.md). Планируемая структура:
 
 ```
 services/          inventory, booking, payment, channel-sync
 platform/          общий пакет: outbox, inbox, обёртки Kafka и Messenger, correlation id, Problem Details, OpenTelemetry
-contracts/         OpenAPI, AsyncAPI, JSON Schema событий по версиям
+contracts/         OpenAPI, AsyncAPI, JSON Schema событий, команд и общих форматов по версиям
 fake-externals/    заглушки провайдера оплаты и каналов
 deploy/            docker compose, манифесты, наблюдаемость
 docs/              PRD, глоссарий, риски, ADR, runbooks, постмортемы
-.github/workflows/ CI по сервисам, проверка контрактов, смоук-тест
+.github/workflows/ CI: проверки сервисов и контрактов по изменённым путям, смоук-тест
 ```
