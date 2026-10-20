@@ -1,0 +1,15 @@
+# Dependencies and build output
+/services/*/vendor/
+/services/*/var/
+/platform/vendor/
+/fake-externals/*/vendor/
+
+# Local environment and secrets
+.env.local
+.env.*.local
+*.pem
+
+# IDE and OS
+.idea/
+.DS_Store
+Thumbs.db
