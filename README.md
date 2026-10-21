@@ -73,7 +73,9 @@
 
 ## Наблюдаемость
 
-Трейсы OpenTelemetry проходят через HTTP, Messenger и Kafka, correlation id есть в каждом логе. Логи в JSON уходят в Loki, метрики в Prometheus, дашборды в Grafana. Алерты: отставание консьюмеров, непустая DLQ, зависшие саги, доля ошибок, задержка синхронизации с каналами.
+Трейсы OpenTelemetry проходят через HTTP, Messenger и Kafka. Correlation id — это trace id из `traceparent`: он есть в каждом логе и в ответах с ошибкой. Логи в JSON и трейсы собирает Grafana Alloy и отправляет в Loki и Tempo, метрики собирает Prometheus, дашборды — в Grafana. Персональных данных в телеметрии нет: атрибуты спанов и поля логов проходят по разрешённому списку, IP-адрес клиента не пишется.
+
+Алерты — правила Prometheus с тестами, уведомления отправляет Alertmanager в Telegram. Среди них отставание консьюмеров, непустая DLQ, зависшие саги, доля ошибок, задержка синхронизации с каналами. Каждый алерт срабатывает на учении или в сценарии проверки на стенде. Решения описаны в [ADR-0006](docs/adr/0006-observability.md).
 
 ## Учения по инцидентам
 
@@ -99,7 +101,7 @@
 | Шлюз | Traefik |
 | Контракты | OpenAPI 3.1, AsyncAPI 3, JSON Schema; проверка ответов по OpenAPI в тестах |
 | Качество | PHPUnit, PHPStan уровня 8 и выше, PHP CS Fixer |
-| Наблюдаемость | OpenTelemetry (HTTP, Messenger, Kafka), Loki, Tempo, Prometheus, Grafana |
+| Наблюдаемость | OpenTelemetry (HTTP, Messenger, Kafka), Grafana Alloy, Loki, Tempo, Prometheus и promphp, Alertmanager, Grafana |
 | Нагрузка и сбои | k6, Toxiproxy |
 | CI и окружения | GitHub Actions, docker compose; стенд на VPS или в локальном Kubernetes (kind или k3d) |
 
@@ -122,7 +124,7 @@
 
 ```
 services/          inventory, booking, payment, channel-sync
-platform/          общий пакет: outbox, inbox, обёртки Kafka и Messenger, correlation id, Problem Details, OpenTelemetry
+platform/          общий пакет: outbox, inbox, обёртки Kafka и Messenger, Problem Details, OpenTelemetry
 contracts/         OpenAPI, AsyncAPI, JSON Schema событий, команд и общих форматов по версиям
 fake-externals/    заглушки провайдера оплаты и каналов
 deploy/            docker compose, манифесты, наблюдаемость
