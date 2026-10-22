@@ -1,0 +1,193 @@
+# The booking token in a response other than the 201 of booking creation.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--pii-placement--booking-token-in-other-response
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/bookings:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: createBooking
+      summary: Create a booking
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+      responses:
+        '201':
+          description: Created.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedBooking'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+  /v1/bookings/{booking_id}:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    get:
+      operationId: getBooking
+      summary: View a booking
+      security:
+        - bookingToken: []
+      responses:
+        '200':
+          description: Current state.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    bookingToken:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/bookingToken'
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    BookingStatus:
+      type: string
+      enum: [pending_payment, confirmed, not_confirmed, cancelled]
+    NotConfirmedReason:
+      type: string
+      enum: [payment_declined, payment_outcome_unknown, hold_not_confirmed, force_closed]
+    RefundStatus:
+      type: string
+      enum: [none, in_progress, completed, failed]
+    BookingRequest:
+      type: object
+      required: [room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+        check_in_date:
+          type: string
+          format: date
+        check_out_date:
+          type: string
+          format: date
+        rooms:
+          type: integer
+          minimum: 1
+          maximum: 5
+        guests:
+          type: integer
+          minimum: 1
+          maximum: 50
+        guest:
+          $ref: '#/components/schemas/Guest'
+        consent:
+          type: object
+          required: [accepted]
+          properties:
+            accepted:
+              type: boolean
+              enum: [true]
+          additionalProperties: false
+        card_token:
+          type: string
+          maxLength: 132
+        expected_amount:
+          type: integer
+          minimum: 1
+          maximum: 15000000000
+      additionalProperties: false
+    Guest:
+      type: object
+      required: [first_name, last_name, email]
+      properties:
+        first_name:
+          type: string
+          maxLength: 100
+        last_name:
+          type: string
+          maxLength: 100
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        phone:
+          type: string
+          maxLength: 16
+      additionalProperties: false
+    CreatedBooking:
+      type: object
+      required: [booking_id, booking_token]
+      properties:
+        booking_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+        booking_token:
+          type: string
+          maxLength: 46
+      additionalProperties: false
+    Booking:
+      type: object
+      required: [booking_id, status, refund_status]
+      properties:
+        booking_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        not_confirmed_reason:
+          $ref: '#/components/schemas/NotConfirmedReason'
+        refund_status:
+          $ref: '#/components/schemas/RefundStatus'
+        booking_token:
+          type: string
+          maxLength: 46
+      additionalProperties: false

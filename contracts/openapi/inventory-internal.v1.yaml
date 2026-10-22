@@ -1,0 +1,418 @@
+openapi: 3.1.0
+info:
+  title: Inventory internal API
+  version: 1.0.0
+  description: |
+    Internal API of inventory for booking: hold, confirm, release and channel
+    sale by booking id. The gateway does not publish it: calls go over the pair
+    network of booking and inventory, straight to the front of inventory.
+
+    Each call is signed with a short-lived service token. `x-callers` lists the
+    services that may call an operation; any other caller gets 403.
+
+    Rules shared by the operations:
+    - a booking has at most one hold, because the booking id is unique;
+    - the hold result is stored for at least 24 hours, as long as the
+      idempotency key of booking creation;
+    - release leaves the released mark even for an unknown id and keeps it for
+      at least 30 days; after the mark, hold, confirm and channel sale refuse;
+    - operations on the same booking id run one after another;
+    - request bodies are open: unknown fields are ignored, so booking may send a
+      new optional field before inventory knows it.
+
+    Order of checks: route, 401, 403, `hotel_not_found`, the body schema, then
+    the record by booking id (`hotel_mismatch`, a stored result, finished hold
+    or released mark), and only then checks against dates and data (422) and
+    availability and amount (409). A retry of hold therefore returns the stored
+    snapshot even after midnight in the hotel's time zone.
+
+    Conventions are described in contracts/README.md.
+servers:
+  - url: 'http://{host}'
+    description: Front of inventory in the pair network of booking and inventory.
+    variables:
+      host:
+        default: inventory
+        description: Alias of inventory in the pair network, set in compose.
+tags:
+  - name: holds
+    description: Holds and sales by booking id.
+paths:
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/hold:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    put:
+      operationId: holdRooms
+      summary: Hold rooms for a direct booking
+      description: |
+        Holds the rooms on every night of the stay, all or nothing, for 15
+        minutes, and returns the snapshot: amount, check-in moment and hold
+        expiry. The server amount is computed from the nightly prices at this
+        moment; the charge uses it, and `expected_amount` is only compared with
+        it.
+
+        A retry while the hold is active returns the same hold with the same
+        snapshot, even if prices or the check-in time have changed. A retry after
+        the hold has expired or been released is refused with `hold_finished`: a
+        booking never gets a second hold.
+
+        A room type that is deactivated is 409 `no_availability`; an unknown or
+        deleted room type is 422.
+      tags: [holds]
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldRequest'
+            example:
+              room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+              check_in_date: '2026-11-10'
+              check_out_date: '2026-11-12'
+              rooms: 1
+              expected_amount: 1250000
+      responses:
+        '200':
+          description: The hold is active. A retry returns the same snapshot.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldSnapshot'
+              example:
+                amount: 1250000
+                check_in_at: '2026-11-10T11:00:00Z'
+                expires_at: '2026-10-22T12:15:00Z'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '409':
+          description: |
+            `no_availability` — not enough rooms for at least one night;
+            `amount_changed` — the server amount differs from `expected_amount`;
+            when both are true, the answer is `no_availability`;
+            `hold_finished` — the hold has expired or been released;
+            `hotel_mismatch` — the booking with this id belongs to another hotel.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/no_availability'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/amount_changed'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hold_finished'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hotel_mismatch'
+              examples:
+                amount_changed:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#amount_changed
+                    title: Amount changed
+                    status: 409
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                    current_amount: 1300000
+                hold_finished:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hold_finished
+                    title: Hold finished
+                    status: 409
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/confirm:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    post:
+      operationId: confirmHold
+      summary: Confirm the hold of a booking
+      description: |
+        Turns the hold into a sale. This is the point of no return of a direct
+        booking. Checks go in this order:
+        1. released mark or no hold — `hold_finished`;
+        2. already confirmed — 200 `confirmed`, even after the hold expiry;
+        3. after the hold expiry — `hold_finished`.
+      tags: [holds]
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      responses:
+        '200':
+          description: The hold is confirmed. A retry returns the same answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldConfirmation'
+              example:
+                state: confirmed
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '409':
+          description: |
+            `hold_finished` — released, no hold, or the hold has expired;
+            `hotel_mismatch` — the booking with this id belongs to another hotel.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hold_finished'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hotel_mismatch'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hold_finished
+                title: Hold finished
+                status: 409
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/release:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    post:
+      operationId: releaseBooking
+      summary: Release the hold or the sale of a booking
+      description: |
+        Releases the hold or the sale of the booking and leaves the released
+        mark, even if nothing was held or sold under this id. For a channel sale
+        the oversold number is reduced first. The mark is kept for at least 30
+        days; after it hold, confirm and channel sale refuse. A retry is safe.
+
+        On `hotel_mismatch` nothing is changed and the mark is not set.
+      tags: [holds]
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      responses:
+        '204':
+          description: Released, or there was nothing to release. The mark is set.
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '409':
+          description: The booking with this id belongs to another hotel.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../schemas/problem-details.v1.json#/$defs/hotel_mismatch'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hotel_mismatch
+                title: Hotel mismatch
+                status: 409
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/channel-sale:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    put:
+      operationId: recordChannelSale
+      summary: Record a sale from a channel
+      description: |
+        Records the sale of a channel booking without a hold. The channel has
+        already sold the rooms, so the sale is never refused for lack of rooms:
+        it may go above the offered number, and then the response sets
+        `overbooked_on_acceptance`. Limits of direct bookings do not apply: more
+        than 5 rooms or 30 nights, check-in in the past and a deactivated room
+        type are accepted. A retry returns the same answer.
+
+        Nights beyond the sales horizon and an unknown or deleted room type are
+        422; the caller treats 422 as final. After the released mark the sale is
+        refused with `booking_released`.
+      tags: [holds]
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelSaleRequest'
+            example:
+              room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+              check_in_date: '2026-11-10'
+              check_out_date: '2026-11-12'
+              rooms: 2
+      responses:
+        '200':
+          description: The sale is recorded. A retry returns the same answer.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ChannelSaleResult'
+              example:
+                overbooked_on_acceptance: false
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '409':
+          description: |
+            `booking_released` — the booking carries the released mark;
+            `hotel_mismatch` — the booking with this id belongs to another hotel.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/booking_released'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hotel_mismatch'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#booking_released
+                title: Booking released
+                status: 409
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Short-lived service token: a JWT signed with EdDSA (Ed25519) by the
+        caller for every request. `iss` is the caller, `aud` is inventory, and
+        the token lives at most 60 seconds. It is bound to the request: `htm` is
+        the method, `htu` the path with the query string, `bh` the base64url
+        SHA-256 of the body. Any failed check is 401; a caller outside
+        `x-callers` is 403.
+  schemas:
+    HoldRequest:
+      description: |
+        The fields are named and nested exactly as in the body of booking
+        creation, so booking passes `pointer` and `code` of a 422 to the guest
+        as they are. The body is open: unknown fields are ignored.
+      type: object
+      required: [room_type_id, check_in_date, check_out_date, rooms, expected_amount]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+        expected_amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ExpectedAmount'
+    HoldSnapshot:
+      description: Snapshot fixed by the hold. A retry returns the same values.
+      type: object
+      required: [amount, check_in_at, expires_at]
+      properties:
+        amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Amount'
+        check_in_at:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInAt'
+        expires_at:
+          description: |
+            Hold expiry in UTC, 15 minutes after the hold was created. Without a
+            fraction of a second: YYYY-MM-DDThh:mm:ssZ.
+          type: string
+          format: date-time
+          maxLength: 20
+          pattern: 'Z(?![\s\S])'
+      additionalProperties: false
+    HoldConfirmation:
+      type: object
+      required: [state]
+      properties:
+        state:
+          type: string
+          enum: [confirmed]
+      additionalProperties: false
+    ChannelSaleRequest:
+      description: The body is open; unknown fields are ignored.
+      type: object
+      required: [room_type_id, check_in_date, check_out_date, rooms]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          description: Number of rooms. Channel bookings are not limited to 5.
+          type: integer
+          minimum: 1
+          maximum: 1000
+    ChannelSaleResult:
+      type: object
+      required: [overbooked_on_acceptance]
+      properties:
+        overbooked_on_acceptance:
+          description: |
+            The sale went above the offered number on at least one night. Set
+            once on acceptance and never cleared.
+          type: boolean
+      additionalProperties: false

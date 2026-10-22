@@ -1,0 +1,270 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Problem Details v1",
+  "description": "Error responses of all services (RFC 9457). The root schema is the open general form: clients ignore members they do not know. Each problem type in $defs has its own closed schema. Type URIs are identifiers and never change after v1; each points to the type's description in contracts/README.md.",
+  "type": "object",
+  "required": ["type", "title", "status"],
+  "properties": {
+    "type": {"type": "string", "maxLength": 200},
+    "title": {"type": "string", "maxLength": 200},
+    "status": {"type": "integer", "minimum": 400, "maximum": 599},
+    "trace_id": {"$ref": "#/$defs/TraceId"}
+  },
+  "$defs": {
+    "TraceId": {
+      "description": "Trace id from W3C traceparent: 32 lowercase hex characters, not all zeros. Support uses it to find the request in logs and traces.",
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^(?!0{32})[0-9a-f]{32}(?![\\s\\S])"
+    },
+    "Date": {
+      "description": "Hotel local date.",
+      "type": "string",
+      "format": "date"
+    },
+    "ErrorCode": {
+      "description": "Stable machine-readable reason. The list is open: values of v1 are listed in contracts/README.md, and a client treats an unknown code as a generic error of this field or parameter.",
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z][a-z0-9_]{0,63}(?![\\s\\S])"
+    },
+    "BodyFieldError": {
+      "description": "Error in the request body. The pointer names the field; for an unknown property it names the parent object, so a client-chosen name never comes back.",
+      "type": "object",
+      "required": ["pointer", "code"],
+      "properties": {
+        "pointer": {
+          "description": "JSON Pointer (RFC 6901) into the request body, built from field names of the contract and array indexes. An empty string is the whole body.",
+          "type": "string",
+          "maxLength": 200,
+          "pattern": "^(?:/(?:[a-z][a-z0-9_]{0,63}|[0-9]{1,3}))*(?![\\s\\S])"
+        },
+        "code": {"$ref": "#/$defs/ErrorCode"}
+      },
+      "additionalProperties": false
+    },
+    "ParameterError": {
+      "description": "Error in a path, query or header parameter.",
+      "type": "object",
+      "required": ["parameter", "code"],
+      "properties": {
+        "parameter": {
+          "description": "Parameter name as written in the contract: snake_case for path and query parameters, Header-Case for headers, for example check_in_date or Idempotency-Key.",
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^(?:[a-z][a-z0-9_]{0,63}|[A-Z][A-Za-z0-9]*(?:-[A-Z][A-Za-z0-9]*)*)(?![\\s\\S])"
+        },
+        "code": {"$ref": "#/$defs/ErrorCode"}
+      },
+      "additionalProperties": false
+    },
+    "ValidationErrorItem": {
+      "type": "object",
+      "oneOf": [
+        {"$ref": "#/$defs/BodyFieldError"},
+        {"$ref": "#/$defs/ParameterError"}
+      ]
+    },
+    "about_blank": {
+      "description": "Refusal without meaning beyond the HTTP status code (RFC 9457, about:blank), for codes that the front or the gateway may send as well as the service. The title is the status phrase, never a text from the request or an exception. trace_id is present when the response comes from the service or when the front had already read traceparent; the gateway sends it never.",
+      "type": "object",
+      "required": ["type", "title", "status"],
+      "properties": {
+        "type": {"type": "string", "enum": ["about:blank"]},
+        "title": {
+          "type": "string",
+          "enum": ["Bad Request", "Forbidden", "Not Found", "Method Not Allowed", "Length Required", "Content Too Large", "URI Too Long", "Internal Server Error", "Not Implemented", "Bad Gateway", "Gateway Timeout"]
+        },
+        "status": {"type": "integer", "enum": [400, 403, 404, 405, 411, 413, 414, 500, 501, 502, 504]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "about_blank_traced": {
+      "description": "about:blank for a status code that only the service sends, so trace_id is always present. The title is the status phrase.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["about:blank"]},
+        "title": {"type": "string", "enum": ["Unauthorized", "Unsupported Media Type", "Service Unavailable"]},
+        "status": {"type": "integer", "enum": [401, 415, 503]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "validation_error": {
+      "description": "The request did not pass validation. Each error names a body field or a parameter and a stable code; values from the request are never echoed.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id", "errors"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#validation_error"]},
+        "title": {"type": "string", "enum": ["Validation error"]},
+        "status": {"type": "integer", "enum": [422]},
+        "trace_id": {"$ref": "#/$defs/TraceId"},
+        "errors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 50,
+          "items": {"$ref": "#/$defs/ValidationErrorItem"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "idempotency_key_missing": {
+      "description": "Booking creation came without the Idempotency-Key header.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#idempotency_key_missing"]},
+        "title": {"type": "string", "enum": ["Idempotency key missing"]},
+        "status": {"type": "integer", "enum": [400]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "idempotency_key_mismatch": {
+      "description": "The idempotency key is already bound to another hotel or another request body. A key is bound to the hotel in the path and to the body bytes of its first request for 24 hours.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#idempotency_key_mismatch"]},
+        "title": {"type": "string", "enum": ["Idempotency key mismatch"]},
+        "status": {"type": "integer", "enum": [422]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "request_in_progress": {
+      "description": "A request with this idempotency key is still being processed. Retry later with the same key and body.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#request_in_progress"]},
+        "title": {"type": "string", "enum": ["Request in progress"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "no_availability": {
+      "description": "Not enough rooms for at least one night.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#no_availability"]},
+        "title": {"type": "string", "enum": ["No availability"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "amount_changed": {
+      "description": "The server amount differs from the expected amount. The response carries the current amount.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id", "current_amount"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#amount_changed"]},
+        "title": {"type": "string", "enum": ["Amount changed"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"},
+        "current_amount": {
+          "description": "Current amount in kopecks.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 15000000000
+        }
+      },
+      "additionalProperties": false
+    },
+    "hold_expired": {
+      "description": "A retry of booking creation came when the hold had already expired or been released, or less than a minute was left. The booking is not created; create it again with a new key. The response has no booking id.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hold_expired"]},
+        "title": {"type": "string", "enum": ["Hold expired"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "cancellation_not_allowed": {
+      "description": "The booking cannot be cancelled: the check-in moment has passed, the booking is pending payment or not confirmed, or it came from a channel.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#cancellation_not_allowed"]},
+        "title": {"type": "string", "enum": ["Cancellation not allowed"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "offered_below_committed": {
+      "description": "The hotel offers fewer rooms than are sold plus held on at least one date. Nothing is changed; the response lists those dates.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id", "dates"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#offered_below_committed"]},
+        "title": {"type": "string", "enum": ["Offered below committed"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"},
+        "dates": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 365,
+          "items": {"$ref": "#/$defs/Date"}
+        }
+      },
+      "additionalProperties": false
+    },
+    "hold_finished": {
+      "description": "Internal API. The hold of this booking has expired, has been released, or never existed; a booking never gets a second hold.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hold_finished"]},
+        "title": {"type": "string", "enum": ["Hold finished"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "booking_released": {
+      "description": "Internal API. The booking carries the released mark, so a late channel sale is refused.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#booking_released"]},
+        "title": {"type": "string", "enum": ["Booking released"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "hotel_not_found": {
+      "description": "Internal API. The hotel in the path does not exist. Unlike a 404 without a type, this is an answer of the operation, not a missing route.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hotel_not_found"]},
+        "title": {"type": "string", "enum": ["Hotel not found"]},
+        "status": {"type": "integer", "enum": [404]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    },
+    "hotel_mismatch": {
+      "description": "Internal API. The hotel in the path differs from the hotel of the booking with this id. Nothing is changed.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hotel_mismatch"]},
+        "title": {"type": "string", "enum": ["Hotel mismatch"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

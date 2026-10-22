@@ -1,0 +1,375 @@
+openapi: 3.1.0
+info:
+  title: Inventory API
+  version: 1.0.0
+  description: |
+    Public API of inventory: availability and prices of a hotel, and search for
+    guests. Every operation here is published on the gateway; the internal API
+    of inventory is a separate document, inventory-internal.v1.yaml.
+
+    Conventions are described in contracts/README.md.
+servers:
+  - url: 'https://{host}'
+    description: Gateway.
+    variables:
+      host:
+        default: localhost
+        description: Gateway host of the environment.
+tags:
+  - name: availability
+    description: Availability and prices that the hotel manages.
+  - name: search
+    description: Search of availability and prices for guests.
+paths:
+  /v1/hotels/{hotel_id}/room-types/{room_type_id}/availability:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/RoomTypeId'
+    put:
+      operationId: putAvailability
+      summary: Set availability and price for a date range
+      description: |
+        Sets the offered number of rooms and the nightly price of a room type on
+        every date of the half-open range [from, to). Values are absolute, so a
+        retry is safe. The change applies to the whole range or not at all.
+
+        The range is not longer than 365 days and lies within the sales
+        horizon: [today, today + 365 days), where today is the hotel's local
+        date. The offered number may not go below sold plus held on any date;
+        then nothing changes, and the 409 response lists those dates. To stop
+        sales on a date, offer as many rooms as are sold.
+      tags: [availability]
+      security:
+        - hotelApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityUpdate'
+            example:
+              from: '2026-11-10'
+              to: '2026-11-20'
+              offered: 8
+              price: 625000
+      responses:
+        '204':
+          description: The whole range is updated.
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '409':
+          description: The offered number is below sold plus held on the listed dates. Nothing is changed.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../schemas/problem-details.v1.json#/$defs/offered_below_committed'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#offered_below_committed
+                title: Offered below committed
+                status: 409
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                dates: ['2026-11-12', '2026-11-13']
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+    get:
+      operationId: getAvailability
+      summary: View availability by date
+      description: |
+        Returns, for every date of the half-open range [from, to), the offered,
+        sold, held and remaining numbers of rooms, the oversold number and the
+        price. The range is not longer than 365 days.
+      tags: [availability]
+      security:
+        - hotelApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Availability by date.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AvailabilityCalendar'
+              example:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                from: '2026-11-10'
+                to: '2026-11-12'
+                dates:
+                  - date: '2026-11-10'
+                    offered: 8
+                    sold: 5
+                    held: 1
+                    remaining: 2
+                    oversold: 0
+                    price: 625000
+                  - date: '2026-11-11'
+                    offered: 0
+                    sold: 1
+                    held: 0
+                    remaining: 0
+                    oversold: 1
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability and prices
+      description: |
+        Returns the room types that have enough rooms for every night of the
+        stay, with nightly prices and the amount. Nothing is held. An empty list
+        is not an error.
+
+        The stay is 1 to 30 nights within the sales horizon, check-in not
+        before the hotel's local date, 1 to 5 rooms.
+      tags: [search]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/CheckInDate'
+        - $ref: '#/components/parameters/CheckOutDate'
+        - $ref: '#/components/parameters/Rooms'
+      responses:
+        '200':
+          description: Room types available for the whole stay.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SearchResult'
+              example:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                check_in_date: '2026-11-10'
+                check_out_date: '2026-11-12'
+                rooms: 1
+                room_types:
+                  - room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                    name: Standard double
+                    capacity: 2
+                    remaining_for_stay: 2
+                    nightly_prices:
+                      - date: '2026-11-10'
+                        price: 625000
+                      - date: '2026-11-11'
+                        price: 625000
+                    amount: 1250000
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    hotelApiKey:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/hotelApiKey'
+  parameters:
+    From:
+      name: from
+      in: query
+      required: true
+      description: First date of the range.
+      schema:
+        $ref: '#/components/schemas/Date'
+    To:
+      name: to
+      in: query
+      required: true
+      description: Date after the last date of the range.
+      schema:
+        $ref: '#/components/schemas/Date'
+    CheckInDate:
+      name: check_in_date
+      in: query
+      required: true
+      schema:
+        $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+    CheckOutDate:
+      name: check_out_date
+      in: query
+      required: true
+      schema:
+        $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+    Rooms:
+      name: rooms
+      in: query
+      required: true
+      schema:
+        $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+  schemas:
+    Date:
+      description: Hotel local date.
+      type: string
+      format: date
+    RoomCount:
+      description: Number of rooms of a room type on a night.
+      type: integer
+      minimum: 0
+      maximum: 10000
+    Price:
+      description: Nightly price of a room in kopecks, the final price for the guest.
+      type: integer
+      minimum: 1
+      maximum: 100000000
+    AvailabilityUpdate:
+      type: object
+      required: [from, to, offered, price]
+      properties:
+        from:
+          $ref: '#/components/schemas/Date'
+        to:
+          $ref: '#/components/schemas/Date'
+        offered:
+          $ref: '#/components/schemas/RoomCount'
+        price:
+          $ref: '#/components/schemas/Price'
+      additionalProperties: false
+    AvailabilityCalendar:
+      type: object
+      required: [hotel_id, room_type_id, from, to, dates]
+      properties:
+        hotel_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/HotelId'
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        from:
+          $ref: '#/components/schemas/Date'
+        to:
+          $ref: '#/components/schemas/Date'
+        dates:
+          type: array
+          maxItems: 365
+          items:
+            $ref: '#/components/schemas/AvailabilityDay'
+      additionalProperties: false
+    AvailabilityDay:
+      description: |
+        Availability of a room type on a night. remaining = offered − sold −
+        held, never below zero. oversold is how many rooms are sold above the
+        offered number; it comes only from channel bookings. price is absent
+        if the hotel has never set it for this date.
+      type: object
+      required: [date, offered, sold, held, remaining, oversold]
+      properties:
+        date:
+          $ref: '#/components/schemas/Date'
+        offered:
+          $ref: '#/components/schemas/RoomCount'
+        sold:
+          $ref: '#/components/schemas/RoomCount'
+        held:
+          $ref: '#/components/schemas/RoomCount'
+        remaining:
+          $ref: '#/components/schemas/RoomCount'
+        oversold:
+          $ref: '#/components/schemas/RoomCount'
+        price:
+          $ref: '#/components/schemas/Price'
+      additionalProperties: false
+    SearchResult:
+      type: object
+      required: [hotel_id, check_in_date, check_out_date, rooms, room_types]
+      properties:
+        hotel_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/HotelId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+        room_types:
+          type: array
+          maxItems: 100
+          items:
+            $ref: '#/components/schemas/SearchOffer'
+      additionalProperties: false
+    SearchOffer:
+      type: object
+      required: [room_type_id, name, capacity, remaining_for_stay, nightly_prices, amount]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        name:
+          description: Room type name.
+          type: string
+          maxLength: 100
+        capacity:
+          description: How many guests one room takes.
+          type: integer
+          minimum: 1
+          maximum: 20
+        remaining_for_stay:
+          description: The minimum remaining number of rooms over the nights of the stay.
+          type: integer
+          minimum: 1
+          maximum: 10000
+        nightly_prices:
+          type: array
+          minItems: 1
+          maxItems: 30
+          items:
+            $ref: '#/components/schemas/NightlyPrice'
+        amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Amount'
+      additionalProperties: false
+    NightlyPrice:
+      type: object
+      required: [date, price]
+      properties:
+        date:
+          $ref: '#/components/schemas/Date'
+        price:
+          $ref: '#/components/schemas/Price'
+      additionalProperties: false

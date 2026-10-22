@@ -1,0 +1,68 @@
+# A personal data field in the request body of an operation other than booking creation.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--pii-placement--field-in-other-request-body
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/room-types/{room_type_id}/availability:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/RoomTypeId'
+    put:
+      operationId: putAvailability
+      summary: Set availability
+      security:
+        - hotelApiKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityUpdate'
+      responses:
+        '204':
+          description: Updated.
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    hotelApiKey:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/hotelApiKey'
+  schemas:
+    AvailabilityUpdate:
+      type: object
+      required: [from, offered]
+      properties:
+        from:
+          type: string
+          format: date
+        offered:
+          type: integer
+          minimum: 0
+          maximum: 10000
+        phone:
+          type: string
+          maxLength: 16
+      additionalProperties: false

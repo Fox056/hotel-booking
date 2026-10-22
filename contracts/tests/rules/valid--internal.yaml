@@ -1,0 +1,131 @@
+# Control fixture: correct internal operations, one with a body and one
+# without. The body is open: internal request bodies are not closed. No rule
+# may report anything here. Public operations are in valid--public.yaml.
+openapi: 3.1.0
+info:
+  title: Control fixture, internal operations
+  version: 1.0.0
+servers:
+  - url: http://inventory.hotel-booking.test
+paths:
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/hold:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    put:
+      operationId: holdRooms
+      summary: Hold rooms
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/HoldRequest'
+      responses:
+        '200':
+          description: The hold is active.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HoldSnapshot'
+              example:
+                amount: 1250000
+                expires_at: '2026-10-22T12:15:00Z'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '409':
+          description: No availability, or the hold is finished.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/no_availability'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hold_finished'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+  /internal/v1/hotels/{hotel_id}/bookings/{booking_id}/release:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    post:
+      operationId: releaseBooking
+      summary: Release a booking
+      x-callers: [booking]
+      security:
+        - serviceToken: []
+      responses:
+        '204':
+          description: Released.
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/HotelNotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGatewayInternal'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailableInternal'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeoutInternal'
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    HoldRequest:
+      type: object
+      required: [room_type_id, rooms]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+        rooms:
+          type: integer
+          minimum: 1
+          maximum: 5
+    HoldSnapshot:
+      type: object
+      required: [amount, expires_at]
+      properties:
+        amount:
+          type: integer
+          minimum: 1
+          maximum: 15000000000
+        expires_at:
+          type: string
+          format: date-time
+          maxLength: 20
+          pattern: 'Z(?![\s\S])'
+      additionalProperties: false

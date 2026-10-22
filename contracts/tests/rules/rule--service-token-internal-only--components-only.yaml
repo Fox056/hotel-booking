@@ -1,0 +1,15 @@
+# serviceToken is described in a document without paths, as if in common.v1.yaml.
+# Nothing uses it there, so recommended no-unused-components fires too.
+# also-fires: no-unused-components
+openapi: 3.1.0
+info:
+  title: Fixture rule--service-token-internal-only--components-only
+  version: 1.0.0
+servers:
+  - url: http://inventory.hotel-booking.test
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
