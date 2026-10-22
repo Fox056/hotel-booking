@@ -1,0 +1,19 @@
+# A new type in a compacted topic: compaction keeps one record per key,
+# whatever its type, so a booking.cancelled.v1 record would evict the full
+# state of the booking.
+breaking added-to-compacted asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.cancelled.v1
+# The closed schema of the new type is a new definition, compatible on its
+# own: only the topic makes the type breaking.
+compatible added-definition schemas/booking.v1.json#/$defs/booking.cancelled.v1
+# becomes_compacted.v1 gets compact in head...
+breaking changed asyncapi/events.v1.yaml#/channels/becomes_compacted.v1/bindings/kafka/topicConfiguration/cleanup.policy
+# ...so the type added with it is added to a compacted topic: compact in head
+# is enough.
+breaking added-to-compacted asyncapi/events.v1.yaml#/channels/becomes_compacted.v1/messages/sample.removed.v1
+# stops_compaction.v1 loses compact in head...
+breaking changed asyncapi/events.v1.yaml#/channels/stops_compaction.v1/bindings/kafka/topicConfiguration/cleanup.policy
+# ...and compact in base is enough as well: the check looks at both sides.
+breaking added-to-compacted asyncapi/events.v1.yaml#/channels/stops_compaction.v1/messages/sample.removed.v1
+# policy_string.v1 gives cleanup.policy as a string, not as the list of the
+# binding: the check does not read it, so it counts the topic as compacted.
+breaking added-to-compacted asyncapi/events.v1.yaml#/channels/policy_string.v1/messages/sample.removed.v1

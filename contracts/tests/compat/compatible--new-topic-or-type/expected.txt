@@ -1,0 +1,21 @@
+# A new topic: no consumer reads it yet. The check does not descend into an
+# added channel, so its message gives no finding, though the topic is
+# compacted.
+compatible added-channel asyncapi/events.v1.yaml#/channels/hotel.v1
+# The schema file of the new topic.
+compatible added-file schemas/hotel.v1.json#
+# A new type in a topic without compaction: consumers learn it first, and an
+# unknown message goes to the deferred ones.
+compatible added-message asyncapi/events.v1.yaml#/channels/payment.v1/messages/payment.disputed.v1
+# The closed schema of the new type is a new definition.
+compatible added-definition schemas/payment.v1.json#/$defs/payment.disputed.v1
+# A new AsyncAPI document has no finding of its own: each of its channels is
+# a new channel.
+compatible added-channel asyncapi/commands.v1.yaml#/channels/payment.charge
+# The second channel of the new document.
+compatible added-channel asyncapi/commands.v1.yaml#/channels/payment.refund
+# info, servers, operations and components of events.v1.yaml change too;
+# they are deployment and access, not compared, so they give no finding.
+# payment.v1 lists the server kafka in its servers: bundled, the channel
+# carries the changed host of that server, and servers of a channel are not
+# compared either.

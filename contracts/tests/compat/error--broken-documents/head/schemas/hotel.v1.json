@@ -1,0 +1,21 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "hotel.v1",
+  "description": "Messages of the Kafka topic hotel.v1: reference data of a hotel that other services copy.",
+  "$defs": {
+    "hotel.state.v1": {
+      "description": "Full state of the key (hotel) with its version.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["hotel.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/HotelState"}
+      },
+      "additionalProperties": false
+    },
+    "HotelKey": {
+      "description": "Record key: {hotel_id}.",
+ 

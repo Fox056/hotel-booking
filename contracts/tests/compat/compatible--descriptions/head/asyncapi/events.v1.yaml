@@ -1,0 +1,67 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  booking.v1:
+    address: booking.v1
+    title: Booking states
+    description: Public state of every booking. Compaction keeps the latest record of a key.
+    externalDocs:
+      description: Conventions of the topics.
+      url: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#kafka
+    messages:
+      booking.state.v1:
+        name: booking.state.v1
+        title: Booking state
+        summary: Full state of the key (hotel, booking) with its version.
+        tags:
+          - name: booking
+        payload:
+          $ref: '../schemas/booking.v1.json#/$defs/booking.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+            bindingVersion: '0.5.0'
+        examples:
+          - name: confirmed
+            summary: A direct booking after the hold was confirmed and the money was charged.
+            payload:
+              message_id: 0192a3b5-0a1b-7c2d-8e3f-4a5b6c7d8e9f
+              type: booking.state.v1
+              created_at: '2026-10-22T10:15:33.456Z'
+              version:
+                epoch: 1
+                number: 3
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                status: confirmed
+                payment_outcome_unresolved: false
+                refund_status: none
+          - name: cancelled
+            summary: A free cancellation; the refund is in progress.
+            payload:
+              message_id: 0192a3b6-1c2d-7e3f-8a4b-5c6d7e8f9a0b
+              type: booking.state.v1
+              created_at: '2026-10-23T09:00:12.001Z'
+              version:
+                epoch: 1
+                number: 4
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                status: cancelled
+                payment_outcome_unresolved: false
+                refund_status: in_progress
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [delete, compact]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'

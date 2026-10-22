@@ -1,0 +1,10 @@
+# A new definition: nothing refers to it yet, so no reader changes.
+compatible added-definition schemas/envelope.v1.json#/$defs/ChangeId
+# A new definition named Draft/Id~1: in the pointer / is ~1 and ~ is ~0.
+compatible added-definition schemas/envelope.v1.json#/$defs/Draft~1Id~01
+# A new problem type with its closed schema: a client that does not know the
+# type reads the open root form.
+compatible added-definition schemas/problem-details.v1.json#/$defs/room_type_not_found
+# A new schema file: one finding for the whole file, the check does not
+# descend into its definitions.
+compatible added-file schemas/hotel.v1.json#

@@ -1,0 +1,16 @@
+# A new optional field of the closed payload of booking.state.v1: an old
+# consumer ignores it. The field is an object with required members of its
+# own, but the check does not descend into an added member: one finding.
+compatible added-optional schemas/booking.v1.json#/$defs/BookingState/properties/stay
+# The message refers to the changed type, so the bundled document has the
+# same field inside the payload of the message.
+compatible added-optional asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/payload/properties/payload/properties/stay
+# A new optional header of the closed EventHeaders: receivers ignore unknown
+# headers.
+compatible added-optional schemas/envelope.v1.json#/$defs/EventHeaders/properties/causation_id
+# The type of the message refers to EventHeaders, so the bundled message has
+# the new header too.
+compatible added-optional asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/payload/properties/headers/properties/causation_id
+# A new optional field of a closed problem type: clients ignore unknown
+# members (RFC 9457, section 3.2). No message refers to it.
+compatible added-optional schemas/problem-details.v1.json#/$defs/no_availability/properties/dates

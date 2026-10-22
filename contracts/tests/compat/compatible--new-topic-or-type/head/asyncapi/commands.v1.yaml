@@ -1,0 +1,25 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking commands
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  payment.charge:
+    address: payment.charge
+    title: Charge commands
+    messages:
+      payment.charge.v1:
+        name: payment.charge.v1
+        summary: Charge the amount of a booking.
+        payload:
+          $ref: '../schemas/envelope.v1.json#/$defs/Envelope'
+  payment.refund:
+    address: payment.refund
+    title: Refund commands
+    messages:
+      payment.refund.v1:
+        name: payment.refund.v1
+        summary: Return the charged amount of a booking.
+        payload:
+          $ref: '../schemas/envelope.v1.json#/$defs/Envelope'

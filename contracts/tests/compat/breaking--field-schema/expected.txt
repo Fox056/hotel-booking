@@ -1,0 +1,26 @@
+# type of rooms: integer becomes number, and an old consumer cannot read a
+# fraction.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/rooms/type
+# format of check_in_date: a date becomes a date-time.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/check_in_date/format
+# A weaker pattern of hotel_id lets uppercase in: a weaker pattern of a request
+# field is compatible for HTTP, but not in a message, whose old consumer
+# rejects the new values.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/hotel_id/pattern
+# A larger maxLength of booking_id: an old consumer rejects longer values.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/booking_id/maxLength
+# A lower maximum of amount: old messages above it fail the new schema.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/amount/maximum
+# A higher minimum of nights: old messages below it fail the new schema.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/nights/minimum
+# Another maxItems of dates: an old consumer rejects the longer lists.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/dates/maxItems
+# A new value of the enum of status: enums of messages are closed, and an old
+# consumer does not understand no_show.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/status/enum
+# A value is removed from the enum of refund_status: old messages with failed
+# fail the new schema.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/refund_status/enum
+# The check descends into items: a weaker pattern of the items of
+# room_type_ids is found on items, not on the array.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/room_type_ids/items/pattern

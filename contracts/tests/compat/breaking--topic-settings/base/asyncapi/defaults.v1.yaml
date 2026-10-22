@@ -1,0 +1,52 @@
+asyncapi: 3.0.0
+info:
+  title: Default content type
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  default_type.v1:
+    address: default_type.v1
+    messages:
+      sample.state.v1:
+        name: sample.state.v1
+        payload:
+          type: object
+          required: [hotel_id]
+          properties:
+            hotel_id:
+              type: string
+              format: uuid
+              maxLength: 36
+          additionalProperties: false
+        bindings:
+          kafka:
+            key:
+              type: string
+              maxLength: 36
+            bindingVersion: '0.5.0'
+      sample.own_type.v1:
+        name: sample.own_type.v1
+        contentType: application/json
+        payload:
+          type: object
+          required: [hotel_id]
+          properties:
+            hotel_id:
+              type: string
+              format: uuid
+              maxLength: 36
+          additionalProperties: false
+        bindings:
+          kafka:
+            key:
+              type: string
+              maxLength: 36
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'

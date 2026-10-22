@@ -1,0 +1,43 @@
+# All topics here have cleanup.policy [delete], unless a case changes it.
+#
+# The key pattern lets uppercase in: compaction and partitioning use the bytes
+# of the key, so another form of the same ids is another key. In the schema
+# file of the key...
+breaking changed schemas/sample.v1.json#/$defs/SampleKey/pattern
+# ...and in the key of the message of the bundled document.
+breaking changed asyncapi/events.v1.yaml#/channels/key_pattern.v1/messages/sample.state.v1/bindings/kafka/key/pattern
+# The address is the topic: a channel with another address is another topic,
+# though the key of the channel stays.
+breaking changed asyncapi/events.v1.yaml#/channels/address.v1/address
+# Another number of partitions moves keys to other partitions and breaks the
+# order of the records of a key.
+breaking changed asyncapi/events.v1.yaml#/channels/partitions.v1/bindings/kafka/partitions
+# Another set of cleanup policies: compaction now drops older records of a key.
+breaking changed asyncapi/events.v1.yaml#/channels/cleanup_policy.v1/bindings/kafka/topicConfiguration/cleanup.policy
+# Another delay of compaction.
+breaking changed asyncapi/events.v1.yaml#/channels/compaction_lag.v1/bindings/kafka/topicConfiguration/min.compaction.lag.ms
+# retention.ms from 14 days to 7: a rebuild of a copy from the topic finds
+# less than before.
+breaking retention-decreased asyncapi/events.v1.yaml#/channels/retention_decreased.v1/bindings/kafka/topicConfiguration/retention.ms
+# retention.ms from -1, no limit, to 7 days is a decrease too.
+breaking retention-decreased asyncapi/events.v1.yaml#/channels/retention_from_unlimited.v1/bindings/kafka/topicConfiguration/retention.ms
+# retention.ms from 7 days to -1, no limit, is not an increase: at
+# [compact, delete] it would change the cleanup policy, so the check reports
+# changed whatever the policy.
+breaking changed asyncapi/events.v1.yaml#/channels/retention_to_unlimited.v1/bindings/kafka/topicConfiguration/retention.ms
+# retention.ms appears: before, the topic had the default of the broker,
+# which the contract does not state, so this is changed, not an increase.
+breaking changed asyncapi/events.v1.yaml#/channels/retention_set.v1/bindings/kafka/topicConfiguration/retention.ms
+# The message had the defaultContentType of the document and now has its own,
+# another contentType: an old consumer cannot read the new records.
+breaking changed asyncapi/events.v1.yaml#/channels/content_type.v1/messages/sample.state.v1/contentType
+# The name of the message is compared as a field, like the address.
+breaking changed asyncapi/events.v1.yaml#/channels/message_name.v1/messages/sample.state.v1/name
+# In content_type_default.v1 the message gets its own contentType equal to
+# defaultContentType: the resulting content type is the same, so there is no
+# finding.
+#
+# In defaults.v1.yaml defaultContentType changed. The message without its own
+# contentType takes the new one: the finding is at its contentType. The
+# message with its own contentType keeps it and has no finding.
+breaking changed asyncapi/defaults.v1.yaml#/channels/default_type.v1/messages/sample.state.v1/contentType

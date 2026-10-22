@@ -1,0 +1,64 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  payment.v1:
+    address: payment.v1
+    title: Payments
+    messages:
+      payment.charged.v1:
+        name: payment.charged.v1
+        title: Charged
+        summary: Money was charged for a booking.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.charged.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+      payment.refunded.v1:
+        name: payment.refunded.v1
+        title: Refunded
+        summary: The money of a booking was returned.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.refunded.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  hotel.v1:
+    address: hotel.v1
+    title: Hotels
+    messages:
+      hotel.state.v1:
+        name: hotel.state.v1
+        title: Hotel state
+        summary: Full state of the key (hotel) with its version.
+        payload:
+          $ref: '../schemas/hotel.v1.json#/$defs/hotel.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/hotel.v1.json#/$defs/HotelKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'

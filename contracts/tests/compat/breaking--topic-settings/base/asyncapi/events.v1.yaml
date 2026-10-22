@@ -1,0 +1,151 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  key_pattern.v1:
+    address: key_pattern.v1
+    messages:
+      sample.state.v1:
+        name: sample.state.v1
+        payload:
+          $ref: '../schemas/sample.v1.json#/$defs/sample.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/sample.v1.json#/$defs/SampleKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  address.v1:
+    address: address.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  partitions.v1:
+    address: partitions.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  cleanup_policy.v1:
+    address: cleanup_policy.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  compaction_lag.v1:
+    address: compaction_lag.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  retention_decreased.v1:
+    address: retention_decreased.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 1209600000
+        bindingVersion: '0.5.0'
+
+  retention_from_unlimited.v1:
+    address: retention_from_unlimited.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: -1
+        bindingVersion: '0.5.0'
+
+  retention_to_unlimited.v1:
+    address: retention_to_unlimited.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  retention_set.v1:
+    address: retention_set.v1
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+        bindingVersion: '0.5.0'
+
+  content_type.v1:
+    address: content_type.v1
+    messages:
+      sample.state.v1:
+        name: sample.state.v1
+        payload:
+          $ref: '../schemas/sample.v1.json#/$defs/sample.state.v1'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  content_type_default.v1:
+    address: content_type_default.v1
+    messages:
+      sample.state.v1:
+        name: sample.state.v1
+        payload:
+          $ref: '../schemas/sample.v1.json#/$defs/sample.state.v1'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  message_name.v1:
+    address: message_name.v1
+    messages:
+      sample.state.v1:
+        name: sample.state.v1
+        payload:
+          $ref: '../schemas/sample.v1.json#/$defs/sample.state.v1'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'

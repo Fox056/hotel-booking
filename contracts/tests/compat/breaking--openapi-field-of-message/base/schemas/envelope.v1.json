@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message envelope v1",
+  "description": "The envelope of Kafka events and RabbitMQ commands: the JSON object in the message body.",
+  "$defs": {
+    "MessageId": {
+      "description": "Message id: UUID v7 in lowercase, the id of the outbox row.",
+      "type": "string",
+      "format": "uuid",
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "CreatedAt": {
+      "description": "Creation time of the outbox row in UTC, with milliseconds: YYYY-MM-DDThh:mm:ss.sssZ.",
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 24,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z(?![\\s\\S])"
+    },
+    "Traceparent": {
+      "description": "W3C traceparent of the publisher, version 00.",
+      "type": "string",
+      "maxLength": 55,
+      "pattern": "^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}(?![\\s\\S])"
+    },
+    "EventHeaders": {
+      "description": "Headers of an event.",
+      "type": "object",
+      "properties": {
+        "traceparent": {"$ref": "#/$defs/Traceparent"}
+      },
+      "additionalProperties": false
+    },
+    "KeyVersion": {
+      "description": "Version of the state of the message key.",
+      "type": "object",
+      "required": ["epoch", "number"],
+      "properties": {
+        "epoch": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "number": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+      },
+      "additionalProperties": false
+    }
+  }
+}

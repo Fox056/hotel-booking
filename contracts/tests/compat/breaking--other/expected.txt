@@ -1,0 +1,34 @@
+# $schema of the file changed: another dialect may read the same keywords
+# another way.
+breaking changed schemas/booking.v1.json#/$schema
+# additionalProperties: false is removed: the schema is no longer closed, and
+# the tests of the publisher stop catching unknown fields.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/additionalProperties
+# $ref is compared as a string: another definition is another schema, even
+# if both have the same content today.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/booking_id/$ref
+# readOnly is added: it is not one of the descriptions, so it breaks.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/status/readOnly
+# default is added: a reader may fill in a field that the message lacks.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/refund_status/default
+# oneOf gets a third variant: the numbers of elements differ, so one finding
+# on oneOf. An old consumer does not understand the new variant.
+breaking changed schemas/booking.v1.json#/$defs/PaymentOutcome/oneOf
+# The schema of the new variant is a new definition, compatible on its own.
+compatible added-definition schemas/booking.v1.json#/$defs/OutcomeUnknown
+# allOf has as many elements on both sides, so it is compared element by
+# element: the maximum of the second element changed.
+breaking changed schemas/booking.v1.json#/$defs/BookingState/properties/refund_attempt/allOf/1/maximum
+# The open headers of the general form now require traceparent without
+# describing it: the name is in required, and the field is on neither side.
+breaking changed schemas/envelope.v1.json#/$defs/Envelope/properties/headers/required
+# The message gets headers of the record: an event has none, and its old
+# consumer does not read them.
+breaking changed asyncapi/events.v1.yaml#/channels/payment.v1/messages/payment.charged.v1/headers
+# bindingVersion of the binding of the channel changed: any change of a
+# binding that the rules do not name as compatible breaks.
+breaking changed asyncapi/events.v1.yaml#/channels/payment.v1/bindings/kafka/bindingVersion
+# AnyButNotCharged is the not of a closed schema. A new optional field there
+# widens the inner schema, so it narrows the outer one: any change under not
+# is a change of not.
+breaking changed schemas/booking.v1.json#/$defs/AnyButNotCharged/not

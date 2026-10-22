@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "sample.v1",
+  "description": "A message type that the sample topics of this document share.",
+  "$defs": {
+    "sample.state.v1": {
+      "description": "Full state of a sample key.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"type": "string", "format": "uuid", "maxLength": 36},
+        "type": {"type": "string", "enum": ["sample.state.v1"]},
+        "created_at": {"type": "string", "format": "date-time", "maxLength": 24},
+        "payload": {"$ref": "#/$defs/SampleState"}
+      },
+      "additionalProperties": false
+    },
+    "SampleKey": {
+      "description": "Record key: {hotel_id}:{booking_id}.",
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}:[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![\\s\\S])"
+    },
+    "SampleState": {
+      "description": "Data of a sample message.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id"],
+      "properties": {
+        "hotel_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"},
+        "booking_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

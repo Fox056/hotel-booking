@@ -1,0 +1,98 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.1.0
+  description: Kafka topics of the platform, v1.
+defaultContentType: application/json
+
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    description: Kafka of the stand.
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+
+channels:
+  payment.v1:
+    address: payment.v1
+    title: Payments
+    servers:
+      - $ref: '#/servers/kafka'
+    messages:
+      payment.charged.v1:
+        name: payment.charged.v1
+        title: Charged
+        summary: Money was charged for a booking.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.charged.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+      payment.disputed.v1:
+        name: payment.disputed.v1
+        title: Disputed
+        summary: The provider reported a dispute of the charge of a booking.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.disputed.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  hotel.v1:
+    address: hotel.v1
+    title: Hotels
+    messages:
+      hotel.state.v1:
+        name: hotel.state.v1
+        title: Hotel state
+        summary: Full state of the key (hotel) with its version.
+        payload:
+          $ref: '../schemas/hotel.v1.json#/$defs/hotel.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/hotel.v1.json#/$defs/HotelKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+
+operations:
+  sendPaymentEvents:
+    action: send
+    x-service: payment
+    channel:
+      $ref: '#/channels/payment.v1'
+    messages:
+      - $ref: '#/channels/payment.v1/messages/payment.charged.v1'
+      - $ref: '#/channels/payment.v1/messages/payment.disputed.v1'
+  sendHotelState:
+    action: send
+    x-service: inventory
+    channel:
+      $ref: '#/channels/hotel.v1'
+    messages:
+      - $ref: '#/channels/hotel.v1/messages/hotel.state.v1'
+
+components:
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512, an account per service.

@@ -1,0 +1,9 @@
+# The base has no contracts, as a revision before contracts/ appeared: its
+# side holds only .gitkeep, so everything of head is new.
+#
+# Each file of schemas is a new file.
+compatible added-file schemas/envelope.v1.json#
+compatible added-file schemas/hotel.v1.json#
+# A new AsyncAPI document has no finding of its own: its channel is a new
+# channel.
+compatible added-channel asyncapi/events.v1.yaml#/channels/hotel.v1
