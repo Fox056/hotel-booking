@@ -1,0 +1,50 @@
+# A date-time in the payload whose maxLength leaves room for a long fraction of
+# a second, which could hold any digits.
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-fields--long-date-time
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithLongDateTime'
+      bindings:
+        kafka:
+          key:
+            $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+          bindingVersion: '0.5.0'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

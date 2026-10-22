@@ -1,0 +1,114 @@
+# Control fixture: the event rules skip a channel only when all its servers
+# are known and use amqp or amqps and nothing of it has a Kafka binding. The
+# refund channel names only its RabbitMQ server and has no Kafka binding, so its
+# message - with personal data, an open object and no key - is not an event;
+# the booking channel names its Kafka server and is an event channel like any
+# other. No rule may report anything here.
+asyncapi: 3.0.0
+info:
+  title: Control fixture, a channel outside Kafka
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  booking:
+    address: booking.v1
+    servers:
+      - $ref: '#/servers/kafka'
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+  refund:
+    address: payment.refund
+    servers:
+      - $ref: '#/servers/rabbitmq'
+    messages:
+      refundRequested:
+        $ref: '#/components/messages/refundRequested'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+  receiveBookingState:
+    action: receive
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [payment]
+        bindingVersion: '0.5.0'
+    x-service: payment
+  sendRefund:
+    action: send
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: booking
+  receiveRefund:
+    action: receive
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: payment
+components:
+  schemas:
+    RefundCommand:
+      type: object
+      required: [booking_id, email]
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 254
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/booking.state.v1'
+      bindings:
+        kafka:
+          key:
+            $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+          bindingVersion: '0.5.0'
+    refundRequested:
+      name: payment.refund.v1
+      payload:
+        $ref: '#/components/schemas/RefundCommand'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

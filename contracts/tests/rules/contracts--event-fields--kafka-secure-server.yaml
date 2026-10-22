@@ -1,0 +1,41 @@
+# Personal data, email, in the payload of an event whose server uses
+# kafka-secure, the protocol of Kafka over TLS. The rules of events still apply:
+# only servers of a known protocol outside Kafka take a channel out of them.
+# Nothing here has a Kafka binding, so the server alone keeps the rules on, and
+# contracts/event-envelope reports the missing bindings.
+# also-fires: contracts/event-envelope
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-fields--kafka-secure-server
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9093
+    protocol: kafka-secure
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithPersonalDataField'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

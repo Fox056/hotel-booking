@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.v1",
+  "description": "Messages of the Kafka topic booking.v1: the public state of a booking, without personal data and without the steps of the saga. Conventions are described in contracts/README.md.",
+  "$defs": {
+    "booking.state.v1": {
+      "description": "Full state of the key (hotel, booking) with its version. booking publishes it after every change of the booking, channel bookings included.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "BookingKey": {
+      "description": "Record key: {hotel_id}:{booking_id}.",
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "BookingState": {
+      "description": "Public state of a booking. not_confirmed_reason is present only with the status not_confirmed. The statuses, reasons and refund statuses are the ones of the booking API.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status", "payment_outcome_unresolved", "refund_status"],
+      "properties": {
+        "hotel_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/HotelId"},
+        "booking_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/BookingId"},
+        "status": {"$ref": "../openapi/booking.v1.yaml#/components/schemas/BookingStatus"},
+        "not_confirmed_reason": {"$ref": "../openapi/booking.v1.yaml#/components/schemas/NotConfirmedReason"},
+        "payment_outcome_unresolved": {
+          "description": "True while the booking is not_confirmed and booking does not know whether the money was charged, whatever the reason. The payment reconciliation looks for the outcome of such bookings at the provider; once it reports the outcome, the flag becomes false.",
+          "type": "boolean"
+        },
+        "refund_status": {"$ref": "../openapi/booking.v1.yaml#/components/schemas/RefundStatus"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

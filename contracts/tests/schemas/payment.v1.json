@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.v1 stub for lint fixtures",
+  "description": "Test helper: a small stand-in for ../../schemas/payment.v1.json, used by the fixtures in ../rules/. It lies at the same relative path, so the fixtures reference it exactly as the contracts reference the real file. payment.v1 is a topic with deletion, so its message has no key version. The first four entries are the correct ones; every entry after them is a variant for the violating fixture named in its description.",
+  "$defs": {
+    "payment.charged.v1": {
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.charged.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/Charge"}
+      },
+      "additionalProperties": false
+    },
+    "PaymentKey": {
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Charge": {
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "amount"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "amount": {"type": "integer", "minimum": 1, "maximum": 15000000000}
+      },
+      "additionalProperties": false
+    },
+    "Id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "MessageWithVersion": {
+      "description": "contracts--event-envelope--version-on-delete-topic: the message of a topic with deletion carries a key version.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.charged.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/Charge"}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithOpenNestedObject": {
+      "description": "contracts--event-closed--open-nested-object: the message with ChargedWithOpenPrice as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.charged.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/ChargedWithOpenPrice"}
+      },
+      "additionalProperties": false
+    },
+    "ChargedWithOpenPrice": {
+      "description": "contracts--event-closed--open-nested-object: the payload is closed, but its nested object price has no additionalProperties: false.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "price"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "price": {
+          "type": "object",
+          "required": ["amount"],
+          "properties": {
+            "amount": {"type": "integer", "minimum": 1, "maximum": 15000000000}
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

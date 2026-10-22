@@ -1,0 +1,38 @@
+# The operation goes through a channel of components instead of the root
+# channels. The rules of events and the check of examples see only root
+# channels, so this topic, with personal data, would pass them all.
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-access--operation-channel-in-components
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/components/channels/booking'
+    messages:
+      - $ref: '#/components/channels/booking/messages/bookingState'
+    x-service: booking
+components:
+  channels:
+    booking:
+      address: booking.v1
+      messages:
+        bookingState:
+          $ref: '#/components/messages/bookingState'
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithPersonalDataField'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

@@ -1,0 +1,51 @@
+# Control fixture: a document of RabbitMQ only. Its channel lists no servers,
+# so it is on all servers of the document, and all of them use amqp; nothing has
+# a Kafka binding. The message - with personal data, an open object and no key
+# - is not an event, and no rule may report anything here.
+asyncapi: 3.0.0
+info:
+  title: Control fixture, a document of RabbitMQ only
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  refund:
+    address: payment.refund
+    messages:
+      refundRequested:
+        $ref: '#/components/messages/refundRequested'
+operations:
+  sendRefund:
+    action: send
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: booking
+components:
+  schemas:
+    RefundCommand:
+      type: object
+      required: [booking_id, email]
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+          maxLength: 254
+  messages:
+    refundRequested:
+      name: payment.refund.v1
+      payload:
+        $ref: '#/components/schemas/RefundCommand'
+  securitySchemes:
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

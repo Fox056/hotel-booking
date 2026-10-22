@@ -1,0 +1,50 @@
+# Personal data, email, in the payload of an event of a channel with an empty
+# list of servers. In AsyncAPI 3 an empty list means every server of the
+# document, Kafka included, so the rules of events apply. Nothing here has a
+# Kafka binding, so the servers alone keep the rules on, and
+# contracts/event-envelope reports the missing bindings.
+# also-fires: contracts/event-envelope
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-fields--empty-channel-servers
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  booking:
+    address: booking.v1
+    servers: []
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithPersonalDataField'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

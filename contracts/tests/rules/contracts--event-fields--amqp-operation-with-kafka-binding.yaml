@@ -1,0 +1,53 @@
+# Personal data, email, on a channel whose only server uses amqp, while its
+# receive operation reads with a Kafka group. The binding of the operation keeps
+# the rules of events on; contracts/event-envelope reports the missing bindings
+# of the channel and the message.
+# also-fires: contracts/event-envelope
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-fields--amqp-operation-with-kafka-binding
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+  receiveBookingState:
+    action: receive
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [payment]
+        bindingVersion: '0.5.0'
+    x-service: payment
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithPersonalDataField'
+  securitySchemes:
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

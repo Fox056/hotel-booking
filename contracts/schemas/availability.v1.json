@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "availability.v1",
+  "description": "Messages of the Kafka topic availability.v1: the availability and the price of a room type of a hotel on one date. Conventions are described in contracts/README.md.",
+  "$defs": {
+    "availability.state.v1": {
+      "description": "Full state of the key (hotel, room type, date) with its version. inventory publishes it after every change of the key. A change of a date range is one event per date, all with the same change_id.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "change_id", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["availability.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "change_id": {"$ref": "../schemas/envelope.v1.json#/$defs/ChangeId"},
+        "payload": {"$ref": "#/$defs/AvailabilityState"}
+      },
+      "additionalProperties": false
+    },
+    "AvailabilityKey": {
+      "description": "Record key: {hotel_id}:{room_type_id}:{date}.",
+      "type": "string",
+      "maxLength": 84,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9]{4}-[0-9]{2}-[0-9]{2}(?![\\s\\S])"
+    },
+    "AvailabilityState": {
+      "description": "Availability of a room type on a night, as in the public API: remaining = offered − sold − held, never below zero; oversold is how many rooms are sold above the offered number, and it comes only from channel bookings. price is absent if the hotel has never set it for this date; a receiver then has no price for the date and does not keep an older one.",
+      "type": "object",
+      "required": ["hotel_id", "room_type_id", "date", "offered", "sold", "held", "remaining", "oversold"],
+      "properties": {
+        "hotel_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/HotelId"},
+        "room_type_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/RoomTypeId"},
+        "date": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/Date"},
+        "offered": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/RoomCount"},
+        "sold": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/RoomCount"},
+        "held": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/RoomCount"},
+        "remaining": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/RoomCount"},
+        "oversold": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/RoomCount"},
+        "price": {"$ref": "../openapi/inventory.v1.yaml#/components/schemas/Price"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

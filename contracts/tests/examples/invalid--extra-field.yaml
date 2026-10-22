@@ -1,0 +1,26 @@
+# Test of step 6 of bin/check.sh: the example has a field that its closed
+# schema does not have. The step must report the example.
+asyncapi: 3.0.0
+info:
+  title: Test of the examples check, a field outside the schema
+  version: 1.0.0
+defaultContentType: application/json
+channels:
+  test.v1:
+    address: test.v1
+    messages:
+      test.state.v1:
+        name: test.state.v1
+        payload:
+          type: object
+          required: [hotel_id]
+          properties:
+            hotel_id:
+              type: string
+              format: uuid
+          additionalProperties: false
+        examples:
+          - name: extra_field
+            payload:
+              hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+              status: confirmed

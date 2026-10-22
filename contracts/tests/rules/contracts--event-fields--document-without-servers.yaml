@@ -1,0 +1,36 @@
+# Personal data, email, in the payload of an event in a document without
+# servers. A channel whose servers are unknown keeps the rules of events.
+# Nothing here has a Kafka binding, so the missing servers alone keep the rules
+# on, and contracts/event-envelope reports the missing bindings.
+# also-fires: contracts/event-envelope
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-fields--document-without-servers
+  version: 1.0.0
+defaultContentType: application/json
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+    x-service: booking
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithPersonalDataField'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.
