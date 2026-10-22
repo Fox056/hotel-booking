@@ -1,0 +1,20 @@
+# held is removed, a required field: a consumer that needs it breaks. One
+# finding: no became-optional and no finding on required for a removed field.
+breaking removed schemas/availability.v1.json#/$defs/AvailabilityState/properties/held
+# price is renamed to night_price. A rename is a removal of the old name...
+breaking removed schemas/availability.v1.json#/$defs/AvailabilityState/properties/price
+# ...and a new optional field of the closed schema, compatible on its own.
+compatible added-optional schemas/availability.v1.json#/$defs/AvailabilityState/properties/night_price
+# oversold becomes required: old messages without it fail the new schema.
+breaking became-required schemas/availability.v1.json#/$defs/AvailabilityState/properties/oversold
+# remaining becomes optional: an old consumer that relies on it breaks on new
+# messages without it.
+breaking became-optional schemas/availability.v1.json#/$defs/AvailabilityState/properties/remaining
+# stop_sell is new and required: old messages without it fail the new schema.
+# One finding, not added-optional plus became-required.
+breaking added-required schemas/availability.v1.json#/$defs/AvailabilityState/properties/stop_sell
+# min_stay becomes required...
+breaking became-required schemas/availability.v1.json#/$defs/AvailabilityState/properties/min_stay
+# ...and its maximum changes in the same edit: a field gets both its became-*
+# finding and the findings on the keywords inside it.
+breaking changed schemas/availability.v1.json#/$defs/AvailabilityState/properties/min_stay/maximum

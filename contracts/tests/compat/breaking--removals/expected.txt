@@ -1,0 +1,16 @@
+# A definition is removed: a reader that refers to it breaks. One finding,
+# the check does not descend into a removed member.
+breaking removed schemas/payment.v1.json#/$defs/payment.refunded.v1
+# A schema file is removed: one finding for the whole file, none for its
+# definitions.
+breaking removed schemas/hotel.v1.json#
+# A topic is removed: its consumers lose it. One finding for the channel,
+# none for its message.
+breaking removed asyncapi/events.v1.yaml#/channels/hotel.v1
+# A type of a topic is removed: its consumers stop receiving it.
+breaking removed asyncapi/events.v1.yaml#/channels/payment.v1/messages/payment.refunded.v1
+# A whole AsyncAPI document is removed. It has no finding of its own: each of
+# its channels is removed.
+breaking removed asyncapi/commands.v1.yaml#/channels/payment.charge
+# The second channel of the removed document.
+breaking removed asyncapi/commands.v1.yaml#/channels/payment.refund

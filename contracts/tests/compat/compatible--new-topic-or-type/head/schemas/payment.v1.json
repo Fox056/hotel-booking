@@ -1,0 +1,56 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.v1",
+  "description": "Messages of the Kafka topic payment.v1: facts of money movement.",
+  "$defs": {
+    "payment.charged.v1": {
+      "description": "Money was charged for a booking.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.charged.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/Charge"}
+      },
+      "additionalProperties": false
+    },
+    "payment.disputed.v1": {
+      "description": "The provider reported a dispute of the charge of a booking.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.disputed.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/Charge"}
+      },
+      "additionalProperties": false
+    },
+    "PaymentKey": {
+      "description": "Record key: {hotel_id}:{booking_id}.",
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Id": {
+      "description": "Id, a UUID in lowercase.",
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Charge": {
+      "description": "The charge of a booking: the full booking amount.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "amount"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "amount": {"type": "integer", "minimum": 1, "maximum": 15000000000}
+      },
+      "additionalProperties": false
+    }
+  }
+}

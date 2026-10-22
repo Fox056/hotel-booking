@@ -1,0 +1,14 @@
+# title here is a property of the problem type, not the annotation: the
+# enum of its value changed, and a client that compares the title breaks.
+breaking changed schemas/problem-details.v1.json#/$defs/hold_expired/properties/title/enum
+# type is a property too, not the keyword type: its enum is the type URI,
+# the identifier that clients compare.
+breaking changed schemas/problem-details.v1.json#/$defs/hold_expired/properties/type/enum
+# A property named description: its maxLength is a limit of the value, so
+# the change is changed, not annotation.
+breaking changed schemas/room_type.v1.json#/$defs/RoomType/properties/description/maxLength
+# The pattern of Traceparent is weaker: in the schema file...
+breaking changed schemas/envelope.v1.json#/$defs/Traceparent/pattern
+# ...and in the bundled message, where it lies inside the envelope property
+# headers of the payload, not in the headers of the message.
+breaking changed asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/payload/properties/headers/properties/traceparent/pattern

@@ -1,0 +1,13 @@
+# schemas/hotel.v1.json of head is cut off and is not JSON: it cannot be
+# compared, and its definitions are not reported as removed.
+error head schemas/hotel.v1.json
+# schemas/room_type.v1.json of head is JSON, but an array, not an object.
+error head schemas/room_type.v1.json
+# The payload of the message in asyncapi/events.v1.yaml of head refers to a
+# definition that does not exist, so redocly bundle fails. The channel of the
+# document is not reported as removed.
+error head asyncapi/events.v1.yaml
+# asyncapi/legacy.v1.yaml of head is AsyncAPI 2.6.0. redocly bundle bundles
+# it, but its channels have another structure, so the check refuses it rather
+# than report its channel as new.
+error head asyncapi/legacy.v1.yaml

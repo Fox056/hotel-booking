@@ -5,7 +5,8 @@
 #   1. Names of the top-level directories in contracts/ are not prefixes of
 #      each other: the response validator relates paths by string prefix.
 #   2. Lint of every openapi/*.yaml and asyncapi/*.yaml. Any problem, error or
-#      warning, fails, and so does an empty openapi/ or asyncapi/.
+#      warning, fails, and so does an empty openapi/ or asyncapi/, and
+#      anything in schemas/ that is not a *.json file.
 #   3. Control fixtures produce no problems at all.
 #   4. Every violating fixture fails with its own rule, and no rule fires on it
 #      that the fixture does not declare.
@@ -18,6 +19,9 @@
 #      no-invalid-media-type-examples, the rule that checks the examples of the
 #      OpenAPI documents. The step tests itself on tests/examples/*.yaml: every
 #      example there breaks its schema, and each must be reported.
+#   7. The compatibility check of compat.sh, bin/compat.js, finds exactly
+#      what every pair of tests/compat/ expects, and every kind of finding
+#      has a pair.
 # Problems suppressed by an ignore file (.redocly.lint-ignore.yaml) fail
 # steps 2-4 and 6 as well: an ignore file must not make the run green.
 #
@@ -36,18 +40,24 @@
 # `redocly lint` exits with a non-zero code. All fixtures are linted in one run
 # with --format=json, and node in the same image reads the report.
 #
-# Redocly CLI 2.60.0 runs from Docker, pinned by digest, isolated: no network,
-# no capabilities, a read-only root file system with a tmpfs /tmp, and the
-# unprivileged user nobody; contracts/ is mounted read-only. In Git Bash on
-# Windows MSYS_NO_PATHCONV=1 keeps the paths in docker arguments as they are,
-# and the volume path comes from `pwd -W`.
+# Pairs of the compatibility check are directories
+# tests/compat/<outcome>--<case>:
+#   base/, head/   contracts/ before and after a change, in the layout of
+#                  contracts/; a side without contracts holds only .gitkeep;
+#   expected.txt   every finding and every error of the comparison, a line
+#                  each, "#" starts a comment:
+#                    <verdict> <kind> <file>#<JSON pointer>   a finding
+#                    error <base|head> <file>                 an error
+# <outcome> is compatible: no breaking finding and no error; breaking: a
+# breaking finding and no error; or error: an error. A pair passes when its
+# findings and errors, counted with repeats, are the lines of expected.txt. A
+# line may not repeat, so a finding reported twice fails the pair.
+# Kinds, their verdicts and places are described in bin/compat.js.
+#
+# Redocly CLI runs from Docker as bin/redocly.sh describes.
 set -euo pipefail
 
-readonly IMAGE='redocly/cli:2.60.0@sha256:309a2bf4f7474b76258e144ff3633ef3f2073d83d1048daa142d1aa3743e950c'
-
-contracts_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-mount_dir="$(cd "$contracts_dir" && { pwd -W 2>/dev/null || pwd; })"
-export MSYS_NO_PATHCONV=1
+source "$(dirname "${BASH_SOURCE[0]}")/redocly.sh"
 
 echo '== 1. Top-level directory names in contracts/'
 step1=ok
@@ -68,26 +78,12 @@ if [[ "$step1" == ok ]]; then
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo 'FAIL: docker is not found; steps 2-5 need it' >&2
+  echo 'FAIL: docker is not found; steps 2-7 need it' >&2
   exit 2
 fi
 
-# Steps 2-5 run in one container; the script below comes through stdin.
-docker run --rm -i \
-  --network none \
-  --cap-drop ALL \
-  --security-opt no-new-privileges \
-  --read-only \
-  --tmpfs /tmp \
-  --user 65534:65534 \
-  -e HOME=/tmp \
-  -e REDOCLY_TELEMETRY=off \
-  -e REDOCLY_SUPPRESS_UPDATE_NOTICE=true \
-  -e STEP1="$step1" \
-  -v "$mount_dir:/spec:ro" \
-  -w /spec \
-  --entrypoint node \
-  "$IMAGE" - <<'NODE'
+# Steps 2-7 run in one container; the script below comes through stdin.
+run_in_image -e STEP1="$step1" -w /spec --entrypoint node -- - <<'NODE'
 'use strict';
 
 const fs = require('node:fs');
@@ -99,6 +95,7 @@ const ASYNCAPI = 'asyncapi';
 const DOCUMENT_DIRS = ['openapi', ASYNCAPI];
 const FIXTURES = 'tests/rules';
 const EXAMPLE_TESTS = 'tests/examples';
+const COMPAT_TESTS = 'tests/compat';
 const failed = [];
 if (process.env.STEP1 !== 'ok') {
   failed.push('1. directory names');
@@ -188,24 +185,39 @@ const documents = [];
 for (const dir of DOCUMENT_DIRS) {
   const dirPath = path.join(ROOT, dir);
   const files = fs.existsSync(dirPath) ? fs.readdirSync(dirPath).sort() : [];
-  const found = files.filter((file) => file.endsWith('.yaml')).map((file) => `${dir}/${file}`);
+  const isDocument = (file) => file.endsWith('.yaml') && fs.statSync(path.join(dirPath, file)).isFile();
+  const found = files.filter(isDocument).map((file) => `${dir}/${file}`);
   if (found.length === 0) {
     console.log(`FAIL: ${dir}/ has no *.yaml documents`);
     step2 = false;
   }
   // A document in another form would escape every check.
-  for (const file of files.filter((item) => !item.endsWith('.yaml'))) {
+  for (const file of files.filter((item) => !isDocument(item))) {
     console.log(`FAIL: ${dir}/${file}: only *.yaml documents may lie here, and only they are checked`);
     step2 = false;
   }
   documents.push(...found);
+}
+// The compatibility check compares schemas/*.json only: a schema in another
+// form or in a folder would escape it.
+const schemasPath = path.join(ROOT, 'schemas');
+for (const file of fs.existsSync(schemasPath) ? fs.readdirSync(schemasPath).sort() : []) {
+  if (!file.endsWith('.json') || !fs.statSync(path.join(schemasPath, file)).isFile()) {
+    console.log(`FAIL: schemas/${file}: only *.json files may lie here, and only they are compared`);
+    step2 = false;
+  }
 }
 // A contract never references the helpers of the tests: pointed at a stub in
 // tests/, it would be checked against the stub instead of itself.
 for (const dir of [...DOCUMENT_DIRS, 'schemas']) {
   const dirPath = path.join(ROOT, dir);
   for (const file of fs.existsSync(dirPath) ? fs.readdirSync(dirPath).sort() : []) {
-    if (/\$ref['"]?\s*:\s*['"]?[^'"\s]*tests\//.test(fs.readFileSync(path.join(dirPath, file), 'utf8'))) {
+    const filePath = path.join(dirPath, file);
+    // A folder got its FAIL above.
+    if (!fs.statSync(filePath).isFile()) {
+      continue;
+    }
+    if (/\$ref['"]?\s*:\s*['"]?[^'"\s]*tests\//.test(fs.readFileSync(filePath, 'utf8'))) {
       console.log(`FAIL: ${dir}/${file}: a $ref leads into tests/, the helpers of the tests`);
       step2 = false;
     }
@@ -481,10 +493,142 @@ if (!step6) {
   failed.push('6. examples of the messages');
 }
 
+// --- Step 7 ---
+section(`7. Tests of the compatibility check, ${COMPAT_TESTS}/`);
+const PAIR = /^(compatible|breaking|error)--[a-z0-9]+(?:-[a-z0-9]+)*$/;
+const SIDES = ['base', 'head'];
+let step7 = true;
+let compat;
+try {
+  compat = require(path.join(ROOT, 'bin/compat.js'));
+} catch (error) {
+  console.log(`FAIL: bin/compat.js does not load: ${error.message}`);
+  step7 = false;
+}
+if (compat !== undefined && !(typeof compat.KINDS === 'object' && compat.KINDS !== null
+  && typeof compat.compare === 'function')) {
+  console.log('FAIL: bin/compat.js exports no KINDS object or no compare function');
+  compat = undefined;
+  step7 = false;
+}
+
+function isDirectory(file) {
+  return fs.existsSync(file) && fs.statSync(file).isDirectory();
+}
+
+// Lines of expected.txt in `dir`; whatever is wrong with them goes to `reasons`.
+function readExpected(dir, reasons) {
+  const file = path.join(dir, 'expected.txt');
+  if (!fs.existsSync(file)) {
+    reasons.push('no expected.txt');
+    return [];
+  }
+  const lines = fs.readFileSync(file, 'utf8').split('\n').map((line) => line.trim())
+    .filter((line) => line !== '' && !line.startsWith('#'));
+  const seen = new Set();
+  for (const line of lines) {
+    const [verdict, kind, place, ...rest] = line.split(/\s+/);
+    const known = verdict === 'error'
+      ? SIDES.includes(kind)
+      : Object.hasOwn(compat.KINDS, kind) && compat.KINDS[kind] === verdict;
+    if (place === undefined || rest.length > 0 || !known) {
+      reasons.push(`expected.txt: "${line}" is neither "<verdict> <kind> <place>" with the verdict of the kind nor "error <base|head> <file>"`);
+    }
+    if (seen.has(line)) {
+      reasons.push(`expected.txt: "${line}" is repeated`);
+    }
+    seen.add(line);
+  }
+  if (lines.length === 0) {
+    reasons.push('expected.txt has no lines: a pair without findings would pass even if nothing was compared');
+  }
+  return lines;
+}
+
+// `items` without one occurrence of each of `removed`.
+function without(items, removed) {
+  const rest = [...items];
+  for (const item of removed) {
+    const index = rest.indexOf(item);
+    if (index >= 0) {
+      rest.splice(index, 1);
+    }
+  }
+  return rest;
+}
+
+const compatDir = path.join(ROOT, COMPAT_TESTS);
+const pairs = fs.existsSync(compatDir) ? fs.readdirSync(compatDir).sort() : [];
+if (pairs.length === 0) {
+  console.log(`FAIL: ${COMPAT_TESTS}/ has no pair`);
+  step7 = false;
+}
+const testedKinds = new Set();
+pairs.forEach((name, index) => {
+  if (compat === undefined) {
+    return;
+  }
+  const dir = path.join(compatDir, name);
+  const reasons = [];
+  const match = PAIR.exec(name);
+  if (match === null || !isDirectory(dir)) {
+    reasons.push('not a directory <outcome>--<case>, where <outcome> is compatible, breaking or error');
+  }
+  for (const side of SIDES) {
+    if (!isDirectory(path.join(dir, side))) {
+      reasons.push(`no ${side}/`);
+    }
+  }
+  const expected = isDirectory(dir) ? readExpected(dir, reasons) : [];
+  const verdicts = expected.map((line) => line.split(/\s+/)[0]);
+  const breaking = verdicts.includes('breaking');
+  const errors = verdicts.includes('error');
+  if (match !== null && ((match[1] === 'compatible' && (breaking || errors))
+    || (match[1] === 'breaking' && (!breaking || errors)) || (match[1] === 'error' && !errors))) {
+    reasons.push(`expected.txt does not fit the outcome ${match[1]}`);
+  }
+  expected.filter((line) => !line.startsWith('error ')).forEach((line) => testedKinds.add(line.split(/\s+/)[1]));
+  const notes = [];
+  if (reasons.length === 0) {
+    try {
+      const result = compat.compare(path.join(dir, 'base'), path.join(dir, 'head'), `/tmp/compat-test-${index}`);
+      const actual = [
+        ...result.findings.map((finding) => `${finding.verdict} ${finding.kind} ${finding.location}`),
+        ...result.errors.map((error) => `error ${error.side} ${error.file}`),
+      ];
+      without(expected, actual).forEach((line) => reasons.push(`missing: ${line}`));
+      without(actual, expected).forEach((line) => reasons.push(`unexpected: ${line}`));
+      result.errors.forEach((error) => notes.push(`error of ${error.side} ${error.file}: ${error.message}`));
+    } catch (error) {
+      reasons.push(`bin/compat.js threw: ${error.stack}`);
+    }
+  }
+  if (reasons.length === 0) {
+    console.log(`ok: ${name}: ${expected.length} expected lines`);
+  } else {
+    console.log(`FAIL: ${name}`);
+    [...reasons, ...notes].forEach((text) => console.log(`  ${text.replace(/\s+/g, ' ')}`));
+    step7 = false;
+  }
+});
+if (compat !== undefined) {
+  const untested = Object.keys(compat.KINDS).filter((kind) => !testedKinds.has(kind));
+  if (untested.length > 0) {
+    console.log(`FAIL: kinds of findings without a pair: ${untested.join(', ')}`);
+    step7 = false;
+  } else {
+    console.log(`ok: each of ${Object.keys(compat.KINDS).length} kinds of findings has a pair`);
+  }
+}
+if (!step7) {
+  failed.push('7. tests of the compatibility check');
+}
+
 // --- Summary ---
 section('Summary');
 console.log(`fixtures: ${control.length} control, ${violating.length} violating`);
 console.log(`own rules: ${ownRules.length} (${configurableRules.length} configurable, ${pluginRules.length} plugin)`);
+console.log(`pairs of the compatibility check: ${pairs.length}`);
 console.log(failed.length === 0 ? 'all steps passed' : `failed: ${failed.join('; ')}`);
 process.exitCode = failed.length === 0 ? 0 : 1;
 NODE

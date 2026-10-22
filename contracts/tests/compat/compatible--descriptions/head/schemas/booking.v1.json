@@ -1,0 +1,50 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.v1",
+  "description": "Messages of the Kafka topic booking.v1: the public state of a booking, without personal data and without the steps of the saga.",
+  "$defs": {
+    "booking.state.v1": {
+      "description": "Full state of the key (hotel, booking) with its version.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "BookingKey": {
+      "description": "Record key: {hotel_id}:{booking_id}, both UUIDs in lowercase.",
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Id": {
+      "description": "Id, a UUID in lowercase.",
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "BookingState": {
+      "description": "Public state of a booking: the statuses and the refund statuses are the ones of the booking API.",
+      "type": "object",
+      "required": ["booking_id", "hotel_id", "status", "refund_status", "payment_outcome_unresolved"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["confirmed", "pending_payment", "cancelled", "not_confirmed"]},
+        "payment_outcome_unresolved": {
+          "description": "True while booking does not know whether the money was charged.",
+          "type": "boolean",
+          "deprecated": true
+        },
+        "refund_status": {"type": "string", "enum": ["none", "in_progress", "completed", "failed"]}
+      },
+      "additionalProperties": false
+    }
+  }
+}

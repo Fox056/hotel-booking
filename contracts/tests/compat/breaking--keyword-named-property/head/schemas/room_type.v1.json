@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "room_type.v1",
+  "description": "Messages of the Kafka topic room_type.v1: the room types of a hotel.",
+  "$defs": {
+    "RoomType": {
+      "description": "A room type of a hotel.",
+      "type": "object",
+      "required": ["hotel_id", "room_type_id", "description"],
+      "properties": {
+        "hotel_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"},
+        "room_type_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"},
+        "description": {
+          "description": "Text of the room type that the hotel shows to guests.",
+          "type": "string",
+          "maxLength": 1000
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

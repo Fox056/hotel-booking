@@ -1,0 +1,27 @@
+openapi: 3.1.0
+info:
+  title: Hotel Booking common components
+  version: 1.0.0
+paths: {}
+components:
+  schemas:
+    HotelId:
+      description: Hotel id, a UUID in lowercase.
+      type: string
+      format: uuid
+      pattern: '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}(?![\s\S])'
+    BookingId:
+      description: Booking id, a UUID in lowercase. The server generates it.
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])'
+    Rooms:
+      description: Number of rooms of one room type in a direct booking.
+      type: integer
+      minimum: 1
+      maximum: 8
+    Amount:
+      description: Booking amount in kopecks.
+      type: integer
+      minimum: 1
+      maximum: 15000000000

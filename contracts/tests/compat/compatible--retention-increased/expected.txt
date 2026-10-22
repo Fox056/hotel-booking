@@ -1,0 +1,3 @@
+# Records of payment.v1 are kept 14 days instead of 7: a consumer may read
+# more than before and nothing less.
+compatible retention-increased asyncapi/events.v1.yaml#/channels/payment.v1/bindings/kafka/topicConfiguration/retention.ms

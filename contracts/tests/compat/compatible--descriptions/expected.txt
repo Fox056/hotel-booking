@@ -1,0 +1,40 @@
+# The description of the schema file changed: descriptions are compatible.
+compatible annotation schemas/booking.v1.json#/description
+# The description of the payload type changed.
+compatible annotation schemas/booking.v1.json#/$defs/BookingState/description
+# The same description inside the payload of the bundled message.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/payload/properties/payload/description
+# A field is marked deprecated: it stays in the schema, so readers keep it.
+compatible annotation schemas/booking.v1.json#/$defs/BookingState/properties/payment_outcome_unresolved/deprecated
+# The same mark inside the payload of the bundled message.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/payload/properties/payload/properties/payment_outcome_unresolved/deprecated
+# The title of the Problem Details file changed. The property title in
+# properties stays as it is.
+compatible annotation schemas/problem-details.v1.json#/title
+# A $comment is added to a definition.
+compatible annotation schemas/problem-details.v1.json#/$defs/TraceId/$comment
+# examples are added to a field of a problem type.
+compatible annotation schemas/problem-details.v1.json#/$defs/amount_changed/properties/current_amount/examples
+# example, the OpenAPI form of an example, is added to a field of the root.
+compatible annotation schemas/problem-details.v1.json#/properties/status/example
+# The title of the channel changed.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/title
+# The description of the channel changed.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/description
+# externalDocs are added to the channel.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/externalDocs
+# The summary of the message changed.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/summary
+# The examples of the message changed: one finding on the keyword, the check
+# does not descend into examples.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/examples
+# tags are added to the message.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/tags
+# The description of the schema of the record key changed...
+compatible annotation schemas/booking.v1.json#/$defs/BookingKey/description
+# ...and the key in the bindings of the bundled message is a schema too, so
+# its description is a description there as well.
+compatible annotation asyncapi/events.v1.yaml#/channels/booking.v1/messages/booking.state.v1/bindings/kafka/key/description
+# The order of the values of required and enum of BookingState and of
+# cleanup.policy of the channel changed too: the order does not matter, so
+# there is no finding, neither in the schema file nor in the bundled document.

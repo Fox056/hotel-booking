@@ -1,0 +1,12 @@
+# HotelId of openapi/common.v1.yaml gets a weaker pattern. For an HTTP request
+# that is compatible, but the payload of payment.charged.v1 refers to it
+# through schemas/payment.v1.json, and an old consumer of the message rejects
+# the new values.
+breaking changed asyncapi/events.v1.yaml#/channels/payment.v1/messages/payment.charged.v1/payload/properties/payload/properties/hotel_id/pattern
+# The payload of payment.refunded.v1 refers to the same component: one finding
+# per message.
+breaking changed asyncapi/events.v1.yaml#/channels/payment.v1/messages/payment.refunded.v1/payload/properties/payload/properties/hotel_id/pattern
+# schemas/payment.v1.json has no finding: its $ref did not change, and the
+# check does not resolve the references of schema files. Rooms of
+# common.v1.yaml changed as well, but no message refers to it and OpenAPI
+# documents are not compared on their own: no finding either.

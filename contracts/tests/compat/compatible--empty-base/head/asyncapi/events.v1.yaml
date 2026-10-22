@@ -1,0 +1,30 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  hotel.v1:
+    address: hotel.v1
+    title: Hotels
+    messages:
+      hotel.state.v1:
+        name: hotel.state.v1
+        title: Hotel state
+        summary: Full state of the key (hotel) with its version.
+        payload:
+          $ref: '../schemas/hotel.v1.json#/$defs/hotel.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/hotel.v1.json#/$defs/HotelKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'

@@ -1,0 +1,12 @@
+# traceparent is described in the open headers of the general form Envelope.
+# A described field narrows what the form accepts: a message with an invalid
+# traceparent, still waiting in a queue or a DLQ, would fail the form that
+# receivers check.
+breaking added-to-open schemas/envelope.v1.json#/$defs/Envelope/properties/headers/properties/traceparent
+# A new described field in the open version of the general form narrows it
+# the same way.
+breaking added-to-open schemas/envelope.v1.json#/$defs/Envelope/properties/version/properties/snapshot
+# A new described field in the open root of Problem Details narrows the
+# general form that clients check: a response that already carries a detail
+# of another shape would fail it.
+breaking added-to-open schemas/problem-details.v1.json#/properties/detail

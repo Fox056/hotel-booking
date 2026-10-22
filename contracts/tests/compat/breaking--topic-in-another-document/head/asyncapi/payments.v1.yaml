@@ -1,0 +1,30 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking payment events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  payment.v1:
+    address: payment.v1
+    messages:
+      payment.charged.v1:
+        name: payment.charged.v1
+        payload:
+          type: object
+          required: [hotel_id, booking_id]
+          properties:
+            hotel_id: {type: string, format: uuid, maxLength: 36}
+            booking_id: {type: string, format: uuid, maxLength: 36}
+          additionalProperties: false
+        bindings:
+          kafka:
+            key: {type: string, maxLength: 73}
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'

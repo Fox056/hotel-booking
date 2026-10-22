@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Problem Details v1",
+  "description": "Error responses of all services (RFC 9457). The root schema is the open general form; each problem type in $defs has its own closed schema.",
+  "type": "object",
+  "required": ["type", "title", "status"],
+  "properties": {
+    "type": {"type": "string", "maxLength": 200},
+    "title": {"type": "string", "maxLength": 200},
+    "status": {"type": "integer", "minimum": 400, "maximum": 599},
+    "trace_id": {"$ref": "#/$defs/TraceId"}
+  },
+  "$defs": {
+    "TraceId": {
+      "description": "Trace id from W3C traceparent: 32 lowercase hex characters, not all zeros.",
+      "type": "string",
+      "maxLength": 32,
+      "pattern": "^(?!0{32})[0-9a-f]{32}(?![\\s\\S])"
+    },
+    "Date": {
+      "description": "Hotel local date.",
+      "type": "string",
+      "format": "date"
+    },
+    "no_availability": {
+      "description": "Not enough rooms for at least one night.",
+      "type": "object",
+      "required": ["type", "title", "status", "trace_id"],
+      "properties": {
+        "type": {"type": "string", "enum": ["https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#no_availability"]},
+        "title": {"type": "string", "enum": ["No availability"]},
+        "status": {"type": "integer", "enum": [409]},
+        "trace_id": {"$ref": "#/$defs/TraceId"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

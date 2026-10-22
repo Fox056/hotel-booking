@@ -1,0 +1,48 @@
+asyncapi: 3.0.0
+info:
+  title: More booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+channels:
+  booking_extra:
+    address: booking.v1
+    messages:
+      booking.cancelled.v1:
+        name: booking.cancelled.v1
+        payload:
+          type: object
+          required: [hotel_id, booking_id]
+          properties:
+            hotel_id: {type: string, format: uuid, maxLength: 36}
+            booking_id: {type: string, format: uuid, maxLength: 36}
+          additionalProperties: false
+        bindings:
+          kafka:
+            key: {type: string, maxLength: 73}
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+        bindingVersion: '0.5.0'
+
+  booking_queue:
+    address: booking.v1
+    messages:
+      booking.cancel.v1:
+        name: booking.cancel.v1
+        payload:
+          type: object
+          required: [booking_id]
+          properties:
+            booking_id: {type: string, format: uuid, maxLength: 36}
+          additionalProperties: false
+    bindings:
+      amqp:
+        is: queue
+        queue:
+          name: booking.v1
+        bindingVersion: '0.3.0'

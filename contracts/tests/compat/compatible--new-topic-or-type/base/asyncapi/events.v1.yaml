@@ -1,0 +1,52 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+defaultContentType: application/json
+
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+
+channels:
+  payment.v1:
+    address: payment.v1
+    title: Payments
+    servers:
+      - $ref: '#/servers/kafka'
+    messages:
+      payment.charged.v1:
+        name: payment.charged.v1
+        title: Charged
+        summary: Money was charged for a booking.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.charged.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+operations:
+  sendPaymentEvents:
+    action: send
+    x-service: payment
+    channel:
+      $ref: '#/channels/payment.v1'
+    messages:
+      - $ref: '#/channels/payment.v1/messages/payment.charged.v1'
+
+components:
+  securitySchemes:
+    scram:
+      type: scramSha512

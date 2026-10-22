@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "availability.v1",
+  "description": "Messages of the Kafka topic availability.v1: the availability and the price of a room type of a hotel on one date.",
+  "$defs": {
+    "Id": {
+      "description": "Id, a UUID in lowercase.",
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Date": {
+      "description": "Hotel local date.",
+      "type": "string",
+      "format": "date"
+    },
+    "RoomCount": {
+      "description": "Number of rooms of a room type on a night.",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10000
+    },
+    "AvailabilityState": {
+      "description": "Availability of a room type on a night.",
+      "type": "object",
+      "required": ["hotel_id", "room_type_id", "date", "offered", "sold", "held", "remaining"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "room_type_id": {"$ref": "#/$defs/Id"},
+        "date": {"$ref": "#/$defs/Date"},
+        "offered": {"$ref": "#/$defs/RoomCount"},
+        "sold": {"$ref": "#/$defs/RoomCount"},
+        "held": {"$ref": "#/$defs/RoomCount"},
+        "remaining": {"$ref": "#/$defs/RoomCount"},
+        "oversold": {"$ref": "#/$defs/RoomCount"},
+        "price": {
+          "description": "Nightly price of a room in kopecks.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 100000000
+        },
+        "min_stay": {
+          "description": "Minimum number of nights of a stay that starts on this date.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 30
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

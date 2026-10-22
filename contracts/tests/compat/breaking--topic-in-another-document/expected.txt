@@ -1,0 +1,16 @@
+# A topic is one channel, but the linter checks that within one document
+# only, and channels are matched by their keys in a document.
+#
+# booking-extra.v1.yaml describes booking.v1, a topic that events.v1.yaml
+# already has, with a new type. It is no new topic: the rules of booking.v1
+# hold for it, and a new type there would push out the state of a key. So the
+# channel is a change, not added-channel.
+breaking changed asyncapi/booking-extra.v1.yaml#/channels/booking_extra/address
+# booking_queue has the same address but no Kafka binding, so it is no topic
+# of Kafka: a queue of RabbitMQ may bear the name. It is a new channel.
+compatible added-channel asyncapi/booking-extra.v1.yaml#/channels/booking_queue
+# payment.v1 moved from events.v1.yaml to payments.v1.yaml: its channel is
+# gone from events.v1.yaml...
+breaking removed asyncapi/events.v1.yaml#/channels/payment.v1
+# ...and the channel in payments.v1.yaml is a channel of an existing topic.
+breaking changed asyncapi/payments.v1.yaml#/channels/payment.v1/address
