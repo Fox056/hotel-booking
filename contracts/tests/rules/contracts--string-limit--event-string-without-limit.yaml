@@ -1,0 +1,65 @@
+# A string without maxLength, enum or a limiting format in the payload of an
+# event. In a payload such a string is also free text, so contracts/event-fields
+# fires too.
+# also-fires: contracts/event-fields
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--string-limit--event-string-without-limit
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+  receiveBookingState:
+    action: receive
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [payment]
+        bindingVersion: '0.5.0'
+    x-service: payment
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/MessageWithUnlimitedString'
+      bindings:
+        kafka:
+          key:
+            $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+          bindingVersion: '0.5.0'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

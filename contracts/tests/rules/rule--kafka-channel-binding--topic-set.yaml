@@ -1,0 +1,50 @@
+# The Kafka binding of the channel sets topic: the address of the channel is
+# the topic.
+asyncapi: 3.0.0
+info:
+  title: Fixture rule--kafka-channel-binding--topic-set
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+channels:
+  payment:
+    address: payment.v1
+    messages:
+      paymentCharged:
+        $ref: '#/components/messages/paymentCharged'
+    bindings:
+      kafka:
+        topic: payment.v1
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+operations:
+  sendPaymentCharged:
+    action: send
+    channel:
+      $ref: '#/channels/payment'
+    messages:
+      - $ref: '#/channels/payment/messages/paymentCharged'
+    x-service: payment
+components:
+  messages:
+    paymentCharged:
+      name: payment.charged.v1
+      payload:
+        $ref: '../schemas/payment.v1.json#/$defs/payment.charged.v1'
+      bindings:
+        kafka:
+          key:
+            $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+          bindingVersion: '0.5.0'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

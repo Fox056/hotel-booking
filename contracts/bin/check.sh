@@ -4,15 +4,22 @@
 # Steps:
 #   1. Names of the top-level directories in contracts/ are not prefixes of
 #      each other: the response validator relates paths by string prefix.
-#   2. Lint of every openapi/*.yaml. Any problem, error or warning, fails, and
-#      so does an empty openapi/.
+#   2. Lint of every openapi/*.yaml and asyncapi/*.yaml. Any problem, error or
+#      warning, fails, and so does an empty openapi/ or asyncapi/.
 #   3. Control fixtures produce no problems at all.
 #   4. Every violating fixture fails with its own rule, and no rule fires on it
 #      that the fixture does not declare.
 #   5. Every own rule - rule/* in redocly.yaml and contracts/* in
 #      lint/plugin.js - is enabled and has at least one fixture.
+#   6. Every message of asyncapi/*.yaml has an example, and every example
+#      matches its schema. Redocly 2.60.0 does not check examples of AsyncAPI,
+#      so the step bundles each document with every $ref resolved, puts the
+#      examples into an OpenAPI 3.1 document in /tmp and lints it with
+#      no-invalid-media-type-examples, the rule that checks the examples of the
+#      OpenAPI documents. The step tests itself on tests/examples/*.yaml: every
+#      example there breaks its schema, and each must be reported.
 # Problems suppressed by an ignore file (.redocly.lint-ignore.yaml) fail
-# steps 2-4 as well: an ignore file must not make the run green.
+# steps 2-4 and 6 as well: an ignore file must not make the run green.
 #
 # Fixtures are tests/rules/*.yaml:
 #   <prefix>--<rule>--<case>.yaml  violates rule <prefix>/<rule>, where <prefix>
@@ -88,8 +95,10 @@ const path = require('node:path');
 const { spawnSync } = require('node:child_process');
 
 const ROOT = '/spec';
-const DOCUMENTS = 'openapi';
+const ASYNCAPI = 'asyncapi';
+const DOCUMENT_DIRS = ['openapi', ASYNCAPI];
 const FIXTURES = 'tests/rules';
+const EXAMPLE_TESTS = 'tests/examples';
 const failed = [];
 if (process.env.STEP1 !== 'ok') {
   failed.push('1. directory names');
@@ -173,16 +182,36 @@ function ignoredNote(report) {
 }
 
 // --- Step 2 ---
-section(`2. Lint of ${DOCUMENTS}/*.yaml`);
+section(`2. Lint of ${DOCUMENT_DIRS.map((dir) => `${dir}/*.yaml`).join(' and ')}`);
 let step2 = true;
-const documentsDir = path.join(ROOT, DOCUMENTS);
-const documents = fs.existsSync(documentsDir)
-  ? fs.readdirSync(documentsDir).filter((file) => file.endsWith('.yaml')).sort().map((file) => `${DOCUMENTS}/${file}`)
-  : [];
-if (documents.length === 0) {
-  console.log(`FAIL: ${DOCUMENTS}/ has no *.yaml documents`);
-  step2 = false;
-} else {
+const documents = [];
+for (const dir of DOCUMENT_DIRS) {
+  const dirPath = path.join(ROOT, dir);
+  const files = fs.existsSync(dirPath) ? fs.readdirSync(dirPath).sort() : [];
+  const found = files.filter((file) => file.endsWith('.yaml')).map((file) => `${dir}/${file}`);
+  if (found.length === 0) {
+    console.log(`FAIL: ${dir}/ has no *.yaml documents`);
+    step2 = false;
+  }
+  // A document in another form would escape every check.
+  for (const file of files.filter((item) => !item.endsWith('.yaml'))) {
+    console.log(`FAIL: ${dir}/${file}: only *.yaml documents may lie here, and only they are checked`);
+    step2 = false;
+  }
+  documents.push(...found);
+}
+// A contract never references the helpers of the tests: pointed at a stub in
+// tests/, it would be checked against the stub instead of itself.
+for (const dir of [...DOCUMENT_DIRS, 'schemas']) {
+  const dirPath = path.join(ROOT, dir);
+  for (const file of fs.existsSync(dirPath) ? fs.readdirSync(dirPath).sort() : []) {
+    if (/\$ref['"]?\s*:\s*['"]?[^'"\s]*tests\//.test(fs.readFileSync(path.join(dirPath, file), 'utf8'))) {
+      console.log(`FAIL: ${dir}/${file}: a $ref leads into tests/, the helpers of the tests`);
+      step2 = false;
+    }
+  }
+}
+if (documents.length > 0) {
   const reports = lint(documents);
   if (reports === undefined) {
     step2 = false;
@@ -247,7 +276,9 @@ const configText = fs.readFileSync(path.join(ROOT, 'redocly.yaml'), 'utf8');
 const configured = new Set([...configText.matchAll(/^\s*((?:rule|contracts)\/[a-z0-9]+(?:-[a-z0-9]+)*):/gm)]
   .map((match) => match[1]));
 const plugin = require(path.join(ROOT, 'lint/plugin.js'))();
-const pluginRules = Object.keys(plugin.rules.oas3).map((name) => `${plugin.id}/${name}`);
+// A rule of the plugin may be defined for OpenAPI and AsyncAPI under one name.
+const pluginRules = [...new Set(Object.values(plugin.rules).flatMap((rules) => Object.keys(rules)))]
+  .map((name) => `${plugin.id}/${name}`);
 const configurableRules = [...configured].filter((rule) => rule.startsWith('rule/'));
 const ownRules = [...configurableRules, ...pluginRules].sort();
 
@@ -321,6 +352,133 @@ if (step5) {
   console.log(`ok: each of ${ownRules.length} own rules has a fixture`);
 } else {
   failed.push('5. rule coverage');
+}
+
+// --- Step 6 ---
+section(`6. Examples of the messages of ${ASYNCAPI}/*.yaml`);
+const EXAMPLES_CONFIG = '/tmp/examples-redocly.yaml';
+fs.writeFileSync(EXAMPLES_CONFIG, ['extends: []', 'telemetry: off', 'rules:', '  struct: error',
+  '  no-invalid-media-type-examples:', '    severity: error', '    allowAdditionalProperties: false', ''].join('\n'));
+
+// Checks the examples of the messages of the AsyncAPI documents `files`: each
+// document is bundled with every $ref resolved, and its examples go into one
+// OpenAPI 3.1 document, a path "/<n>" per example. Returns the problems of
+// every example and the errors that prevented a check. The headers of an
+// example are checked against the headers of its message; an example with
+// headers for a message without them is a problem as well.
+function checkExamples(files, tag) {
+  const results = [];
+  const errors = [];
+  const paths = {};
+  // The example that every path "/<n>" checks.
+  const owners = [];
+  const addCheck = (owner, schema, value) => {
+    paths[`/${owners.length}`] = {
+      get: {
+        responses: {
+          200: {
+            description: 'Example of a message.',
+            content: { 'application/json': { schema, example: value } },
+          },
+        },
+      },
+    };
+    owners.push(owner);
+  };
+  for (const file of files) {
+    const bundle = `/tmp/bundle-${tag}-${path.basename(file, '.yaml')}.json`;
+    const bundled = run(['bundle', file, '--config', 'redocly.yaml', '--dereferenced', '--ext', 'json', '-o', bundle]);
+    if (bundled.status !== 0 || !fs.existsSync(bundle)) {
+      errors.push(`${file}: redocly bundle failed: ${`${bundled.stdout} ${bundled.stderr}`.replace(/\s+/g, ' ').trim()}`);
+      continue;
+    }
+    const api = JSON.parse(fs.readFileSync(bundle, 'utf8'));
+    for (const [channelName, channel] of Object.entries(api.channels || {})) {
+      for (const [messageName, message] of Object.entries(channel.messages || {})) {
+        const where = `${file}: channel ${channelName}, message ${messageName}`;
+        const examples = Array.isArray(message.examples) ? message.examples : [];
+        if (examples.length === 0) {
+          errors.push(`${where}: no example`);
+        }
+        examples.forEach((example, index) => {
+          const owner = { name: `${where}, example ${example.name ?? index}`, problems: [] };
+          results.push(owner);
+          addCheck(owner, message.payload, example.payload);
+          if (example.headers !== undefined && message.headers === undefined) {
+            owner.problems.push({ severity: 'error', ruleId: 'check.sh', message: 'Example has headers, but its message has none' });
+          } else if (example.headers !== undefined) {
+            addCheck(owner, message.headers, example.headers);
+          }
+        });
+      }
+    }
+  }
+  if (owners.length === 0) {
+    return { results, errors };
+  }
+  const document = `/tmp/examples-${tag}.json`;
+  fs.writeFileSync(document, JSON.stringify({ openapi: '3.1.0', info: { title: 'Examples of messages', version: '1' }, paths }));
+  const result = run(['lint', '--config', EXAMPLES_CONFIG, '--lint-config=error', '--format=json', '--max-problems=100000',
+    document]);
+  const reports = splitReports(result.stdout);
+  if (reports.length !== 1) {
+    errors.push(`Redocly did not lint the examples: ${result.stderr.replace(/\s+/g, ' ').trim()}`);
+    return { results, errors };
+  }
+  const [report] = reports;
+  for (const problem of report.problems) {
+    const pointer = problem.location && problem.location[0] ? problem.location[0].pointer : '';
+    const match = /^#\/paths\/~1([0-9]+)(?:\/|$)/.exec(pointer);
+    if (match && owners[Number(match[1])] !== undefined) {
+      owners[Number(match[1])].problems.push(problem);
+    } else {
+      errors.push(`the document of examples: ${problem.ruleId} ${problem.message.replace(/\s+/g, ' ')}`);
+    }
+  }
+  if (report.totals.ignored > 0) {
+    errors.push(`${report.totals.ignored} problems ignored by an ignore file`);
+  }
+  return { results, errors };
+}
+
+function printProblems(problems) {
+  problems.forEach((problem) => console.log(`  ${problem.severity}  ${problem.ruleId}  ${problem.message.replace(/\s+/g, ' ')}`));
+}
+
+let step6 = true;
+const own = checkExamples(documents.filter((file) => file.startsWith(`${ASYNCAPI}/`)), 'documents');
+for (const text of own.errors) {
+  console.log(`FAIL: ${text}`);
+  step6 = false;
+}
+for (const { name, problems } of own.results) {
+  console.log(`${problems.length === 0 ? 'ok' : 'FAIL'}: ${name}`);
+  printProblems(problems);
+  step6 = step6 && problems.length === 0;
+}
+// The step tests itself: every example of every document in tests/examples
+// breaks its schema, and each of them must be reported.
+const exampleTests = fs.existsSync(path.join(ROOT, EXAMPLE_TESTS))
+  ? fs.readdirSync(path.join(ROOT, EXAMPLE_TESTS)).filter((file) => file.endsWith('.yaml')).sort()
+  : [];
+if (exampleTests.length === 0) {
+  console.log(`FAIL: ${EXAMPLE_TESTS}/ has no test of this step`);
+  step6 = false;
+}
+exampleTests.forEach((file, index) => {
+  const outcome = checkExamples([`${EXAMPLE_TESTS}/${file}`], `test-${index}`);
+  const caught = outcome.errors.length === 0 && outcome.results.length > 0
+    && outcome.results.every((item) => item.problems.length > 0);
+  console.log(`${caught ? 'ok' : 'FAIL'}: ${EXAMPLE_TESTS}/${file}: ${caught ? 'every broken example is reported' : 'not every broken example is reported'}`);
+  outcome.errors.forEach((text) => console.log(`  ${text}`));
+  outcome.results.forEach(({ name, problems }) => {
+    console.log(`  ${name}: ${problems.length} problems`);
+    printProblems(problems);
+  });
+  step6 = step6 && caught;
+});
+if (!step6) {
+  failed.push('6. examples of the messages');
 }
 
 // --- Summary ---

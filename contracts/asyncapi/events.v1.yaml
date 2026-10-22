@@ -1,0 +1,273 @@
+asyncapi: 3.0.0
+info:
+  title: Hotel Booking events
+  version: 1.0.0
+  description: |
+    Kafka topics of the platform, v1. The value of every record is the message
+    envelope of ../schemas/envelope.v1.json in JSON, the key is a string,
+    records have no headers, and every record has a value. A topic is written
+    only by its publisher and read only by the consumer groups of the receive
+    operations below.
+
+    Conventions, the envelope and the rules of compatibility are described in
+    contracts/README.md.
+defaultContentType: application/json
+
+servers:
+  kafka:
+    host: kafka:9092
+    protocol: kafka
+    description: |
+      Kafka of the stand in the data network; the deployment may change the
+      address. The number of replicas is set by the deployment as well.
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+
+channels:
+  availability.v1:
+    address: availability.v1
+    title: Availability
+    description: |
+      State of availability and price per hotel, room type and date. Compaction
+      keeps the latest record of a key, so a copy can be rebuilt from the topic,
+      except after the database of inventory is restored: keys lost by the
+      restore stay here with the old epoch, so copies are then rebuilt from the
+      export of inventory. Records older than about 400 days, longer than the
+      sales horizon, are deleted. Compaction does not touch records younger than
+      7 days: a consumer that lags less sees every event.
+    messages:
+      availability.state.v1:
+        name: availability.state.v1
+        title: Availability state
+        summary: Full state of the key (hotel, room type, date) with its version.
+        payload:
+          $ref: '../schemas/availability.v1.json#/$defs/availability.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/availability.v1.json#/$defs/AvailabilityKey'
+            bindingVersion: '0.5.0'
+        examples:
+          - name: after_hold
+            summary: One night of a hold; the other nights of the hold have their own events with the same change_id.
+            payload:
+              message_id: 0192a3b4-e1f2-7a3b-8c4d-5e6f7a8b9c0d
+              type: availability.state.v1
+              created_at: '2026-10-22T10:15:30.123Z'
+              headers:
+                traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+              version:
+                epoch: 1
+                number: 42
+              change_id: 0192a3b4-e1f0-7b2c-9d3e-4f5a6b7c8d9e
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                date: '2026-11-10'
+                offered: 10
+                sold: 4
+                held: 1
+                remaining: 5
+                oversold: 0
+                price: 625000
+    bindings:
+      kafka:
+        partitions: 12
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  booking.v1:
+    address: booking.v1
+    title: Bookings
+    description: |
+      Public state of every booking. Compaction keeps the latest record of a
+      key; records older than about 400 days are deleted, and records younger
+      than 7 days are not compacted. After the database of booking is restored,
+      keys lost by the restore stay here with the old epoch, so copies are then
+      rebuilt from the export of booking.
+    messages:
+      booking.state.v1:
+        name: booking.state.v1
+        title: Booking state
+        summary: Full state of the key (hotel, booking) with its version.
+        payload:
+          $ref: '../schemas/booking.v1.json#/$defs/booking.state.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+            bindingVersion: '0.5.0'
+        examples:
+          - name: confirmed
+            summary: A direct booking after the hold was confirmed.
+            payload:
+              message_id: 0192a3b5-0a1b-7c2d-8e3f-4a5b6c7d8e9f
+              type: booking.state.v1
+              created_at: '2026-10-22T10:15:33.456Z'
+              headers:
+                traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+              version:
+                epoch: 1
+                number: 3
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                status: confirmed
+                payment_outcome_unresolved: false
+                refund_status: none
+          - name: outcome_unknown
+            summary: The hold expired while the payment outcome was unknown; the reconciliation will find it.
+            payload:
+              message_id: 0192a3b5-1b2c-7d3e-9f4a-5b6c7d8e9fa0
+              type: booking.state.v1
+              created_at: '2026-10-22T10:30:31.007Z'
+              version:
+                epoch: 1
+                number: 2
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-d6e7-7f80-8a1b-2c3d4e5f6a7b
+                status: not_confirmed
+                not_confirmed_reason: payment_outcome_unknown
+                payment_outcome_unresolved: true
+                refund_status: none
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+
+  payment.v1:
+    address: payment.v1
+    title: Payments
+    description: |
+      Facts of money movement. The platform has no consumers of this topic in
+      v1; the outcomes of payments reach booking by RabbitMQ. Records are
+      deleted after 7 days.
+    messages:
+      payment.charged.v1:
+        name: payment.charged.v1
+        title: Charged
+        summary: Money was charged for a booking.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.charged.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+        examples:
+          - name: charged
+            summary: The provider charged the booking amount.
+            payload:
+              message_id: 0192a3b5-2c3d-7e4f-a05b-6c7d8e9fa0b1
+              type: payment.charged.v1
+              created_at: '2026-10-22T10:15:32.789Z'
+              headers:
+                traceparent: 00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                amount: 1250000
+      payment.refunded.v1:
+        name: payment.refunded.v1
+        title: Refunded
+        summary: The money of a booking was returned.
+        payload:
+          $ref: '../schemas/payment.v1.json#/$defs/payment.refunded.v1'
+        bindings:
+          kafka:
+            key:
+              $ref: '../schemas/payment.v1.json#/$defs/PaymentKey'
+            bindingVersion: '0.5.0'
+        examples:
+          - name: refunded
+            summary: The first refund attempt returned the whole amount.
+            payload:
+              message_id: 0192a3b5-3d4e-7f50-b16c-7d8e9fa0b1c2
+              type: payment.refunded.v1
+              created_at: '2026-10-23T08:02:11.250Z'
+              headers:
+                traceparent: 00-0af7651916cd43dd8448eb211c80319c-b7ad6b7169203331-01
+              payload:
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                refund_attempt: 1
+                amount: 1250000
+    bindings:
+      kafka:
+        partitions: 3
+        topicConfiguration:
+          cleanup.policy: [delete]
+          retention.ms: 604800000
+        bindingVersion: '0.5.0'
+
+operations:
+  sendAvailabilityState:
+    action: send
+    x-service: inventory
+    channel:
+      $ref: '#/channels/availability.v1'
+    messages:
+      - $ref: '#/channels/availability.v1/messages/availability.state.v1'
+  receiveAvailabilityState:
+    action: receive
+    x-service: channel-sync
+    channel:
+      $ref: '#/channels/availability.v1'
+    messages:
+      - $ref: '#/channels/availability.v1/messages/availability.state.v1'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [channel-sync]
+        bindingVersion: '0.5.0'
+  sendBookingState:
+    action: send
+    x-service: booking
+    channel:
+      $ref: '#/channels/booking.v1'
+    messages:
+      - $ref: '#/channels/booking.v1/messages/booking.state.v1'
+  receiveBookingState:
+    action: receive
+    x-service: payment
+    channel:
+      $ref: '#/channels/booking.v1'
+    messages:
+      - $ref: '#/channels/booking.v1/messages/booking.state.v1'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [payment]
+        bindingVersion: '0.5.0'
+  sendPaymentEvents:
+    action: send
+    x-service: payment
+    channel:
+      $ref: '#/channels/payment.v1'
+    messages:
+      - $ref: '#/channels/payment.v1/messages/payment.charged.v1'
+      - $ref: '#/channels/payment.v1/messages/payment.refunded.v1'
+
+components:
+  schemas:
+    # The general form of the envelope is not a message of any channel; the
+    # reference keeps it under the checks of the schema rules.
+    Envelope:
+      $ref: '../schemas/envelope.v1.json#/$defs/Envelope'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: |
+        SASL/SCRAM-SHA-512, an account per service. The publisher may write
+        only to its topics; a consumer reads a topic only with the group named
+        after its service.

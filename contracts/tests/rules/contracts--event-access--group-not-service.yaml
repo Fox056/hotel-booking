@@ -1,0 +1,63 @@
+# channel-sync reads booking.v1 with the group of payment. With READ on that
+# group it could take the partitions of payment and move its offsets.
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--event-access--group-not-service
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  kafka:
+    host: kafka.hotel-booking.test:9092
+    protocol: kafka
+    security:
+      - $ref: '#/components/securitySchemes/scram'
+channels:
+  booking:
+    address: booking.v1
+    messages:
+      bookingState:
+        $ref: '#/components/messages/bookingState'
+    bindings:
+      kafka:
+        partitions: 6
+        topicConfiguration:
+          cleanup.policy: [compact, delete]
+          retention.ms: 34560000000
+          min.compaction.lag.ms: 604800000
+        bindingVersion: '0.5.0'
+operations:
+  sendBookingState:
+    action: send
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    x-service: booking
+  receiveBookingState:
+    action: receive
+    channel:
+      $ref: '#/channels/booking'
+    messages:
+      - $ref: '#/channels/booking/messages/bookingState'
+    bindings:
+      kafka:
+        groupId:
+          type: string
+          enum: [payment]
+        bindingVersion: '0.5.0'
+    x-service: channel-sync
+components:
+  messages:
+    bookingState:
+      name: booking.state.v1
+      payload:
+        $ref: '../schemas/booking.v1.json#/$defs/booking.state.v1'
+      bindings:
+        kafka:
+          key:
+            $ref: '../schemas/booking.v1.json#/$defs/BookingKey'
+          bindingVersion: '0.5.0'
+  securitySchemes:
+    scram:
+      type: scramSha512
+      description: SASL/SCRAM-SHA-512 credentials of the service.

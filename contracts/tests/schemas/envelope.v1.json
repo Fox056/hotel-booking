@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Message envelope stub for lint fixtures",
+  "description": "Test helper: a copy of the definitions of ../../schemas/envelope.v1.json, used by the fixtures in ../rules/ and by the topic stubs next to it. It lies at the same relative path, so they reference it exactly as the contracts reference the real file.",
+  "$defs": {
+    "Envelope": {
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "#/$defs/MessageId"},
+        "type": {"$ref": "#/$defs/MessageType"},
+        "created_at": {"$ref": "#/$defs/CreatedAt"},
+        "headers": {
+          "type": "object",
+          "properties": {
+            "pii_retain_until": {"$ref": "#/$defs/PiiRetainUntil"}
+          }
+        },
+        "version": {
+          "type": "object",
+          "required": ["epoch", "number"],
+          "properties": {
+            "epoch": {"type": "integer", "minimum": 1, "maximum": 9999},
+            "number": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+          }
+        },
+        "change_id": {"$ref": "#/$defs/ChangeId"},
+        "payload": {"type": "object"}
+      }
+    },
+    "MessageId": {
+      "type": "string",
+      "format": "uuid",
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "MessageType": {
+      "type": "string",
+      "maxLength": 100,
+      "pattern": "^[a-z][a-z0-9_]*(?:\\.[a-z][a-z0-9_]*)*\\.v[1-9][0-9]{0,2}(?![\\s\\S])"
+    },
+    "CreatedAt": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 24,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z(?![\\s\\S])"
+    },
+    "ChangeId": {
+      "type": "string",
+      "format": "uuid",
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Traceparent": {
+      "type": "string",
+      "maxLength": 55,
+      "pattern": "^00-(?!0{32})[0-9a-f]{32}-(?!0{16})[0-9a-f]{16}-[0-9a-f]{2}(?![\\s\\S])"
+    },
+    "PiiRetainUntil": {
+      "type": "string",
+      "format": "date-time",
+      "maxLength": 20,
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z(?![\\s\\S])"
+    },
+    "EventHeaders": {
+      "type": "object",
+      "properties": {
+        "traceparent": {"$ref": "#/$defs/Traceparent"}
+      },
+      "additionalProperties": false
+    },
+    "KeyVersion": {
+      "type": "object",
+      "required": ["epoch", "number"],
+      "properties": {
+        "epoch": {"type": "integer", "minimum": 1, "maximum": 9999},
+        "number": {"type": "integer", "minimum": 1, "maximum": 9007199254740991}
+      },
+      "additionalProperties": false
+    }
+  }
+}

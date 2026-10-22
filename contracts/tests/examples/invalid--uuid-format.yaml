@@ -1,0 +1,26 @@
+# Test of step 6 of bin/check.sh: the example breaks `format: uuid`, the only
+# limit of its field, so only a check of the format can catch it. The step must
+# report the example.
+asyncapi: 3.0.0
+info:
+  title: Test of the examples check, a value outside its format
+  version: 1.0.0
+defaultContentType: application/json
+channels:
+  test.v1:
+    address: test.v1
+    messages:
+      test.state.v1:
+        name: test.state.v1
+        payload:
+          type: object
+          required: [hotel_id]
+          properties:
+            hotel_id:
+              type: string
+              format: uuid
+          additionalProperties: false
+        examples:
+          - name: not_a_uuid
+            payload:
+              hotel_id: not-a-uuid

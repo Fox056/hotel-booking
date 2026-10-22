@@ -1,0 +1,501 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "booking.v1 stub for lint fixtures",
+  "description": "Test helper: a small stand-in for ../../schemas/booking.v1.json, used by the fixtures in ../rules/. It lies at the same relative path, so the fixtures reference it exactly as the contracts reference the real file. booking.v1 is a compacted topic, so its message carries the key version. The first four entries are the correct ones; every entry after them is a variant for the violating fixture named in its description.",
+  "$defs": {
+    "booking.state.v1": {
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "BookingKey": {
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "BookingState": {
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]}
+      },
+      "additionalProperties": false
+    },
+    "Id": {
+      "type": "string",
+      "format": "uuid",
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "KeyWithoutHotel": {
+      "description": "contracts--event-envelope--key-without-hotel: the key is the booking alone, without the hotel in front.",
+      "type": "string",
+      "maxLength": 36,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "MessageWithInlineMessageId": {
+      "description": "contracts--event-envelope--inline-envelope-field: message_id is described in place instead of a $ref to the envelope.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {
+          "type": "string",
+          "format": "uuid",
+          "maxLength": 36,
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}(?![\\s\\S])"
+        },
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithoutVersion": {
+      "description": "contracts--event-envelope--compacted-without-version: the message of a compacted topic has no key version.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithExtraTopLevelField": {
+      "description": "contracts--event-envelope--extra-top-level-field: hotel_id sits next to the envelope fields instead of inside payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithoutHotelId": {
+      "description": "contracts--event-envelope--payload-without-hotel-id: the message with StateWithoutHotelId as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithoutHotelId"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithoutHotelId": {
+      "description": "contracts--event-envelope--payload-without-hotel-id: the payload has no hotel_id.",
+      "type": "object",
+      "required": ["booking_id", "status"],
+      "properties": {
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithPersonalDataField": {
+      "description": "contracts--event-fields--personal-data-field: the message with StateWithEmail as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithEmail"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithEmail": {
+      "description": "contracts--event-fields--personal-data-field: the payload has the guest's email.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "email": {"type": "string", "format": "email", "maxLength": 254}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithFieldNotInAllowlist": {
+      "description": "contracts--event-fields--field-not-in-allowlist: the message with StateWithComment as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithComment"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithComment": {
+      "description": "contracts--event-fields--field-not-in-allowlist: the payload has comment, a name outside the list of event fields.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "comment": {"type": "string", "maxLength": 200}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithExternalBookingId": {
+      "description": "contracts--event-fields--external-booking-id: the message with StateWithExternalBookingId as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithExternalBookingId"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithExternalBookingId": {
+      "description": "contracts--event-fields--external-booking-id: the payload has the channel's booking id, an indirect identifier of the guest.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "external_booking_id": {"type": "string", "maxLength": 64}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithBookingToken": {
+      "description": "contracts--event-fields--booking-token-field: the message with StateWithBookingToken as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithBookingToken"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithBookingToken": {
+      "description": "contracts--event-fields--booking-token-field: the payload has the booking token.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "booking_token": {"type": "string", "maxLength": 46}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithOpenPayload": {
+      "description": "contracts--event-closed--open-payload: the message with OpenState as its payload; the envelope itself is closed.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/OpenState"}
+      },
+      "additionalProperties": false
+    },
+    "OpenState": {
+      "description": "contracts--event-closed--open-payload: the payload has no additionalProperties: false.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]}
+      }
+    },
+    "MessageWithUnlimitedString": {
+      "description": "contracts--string-limit--event-string-without-limit: the message with StateWithUnlimitedString as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithUnlimitedString"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithUnlimitedString": {
+      "description": "contracts--string-limit--event-string-without-limit: status is a string without maxLength, enum or a limiting format.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string"}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithEnvelopeNameInPayload": {
+      "description": "contracts--event-fields--envelope-name-in-payload: the message with StateWithEnvelopeName as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithEnvelopeName"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithEnvelopeName": {
+      "description": "contracts--event-fields--envelope-name-in-payload: number, a name of the envelope, comes back inside the payload.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "number": {"type": "integer", "minimum": 1, "maximum": 100}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithFreeText": {
+      "description": "contracts--event-fields--free-text-in-payload: the message with StateWithFreeText as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithFreeText"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithFreeText": {
+      "description": "contracts--event-fields--free-text-in-payload: status, an allowed name, is free text with a limit instead of an enum.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "maxLength": 500}
+      },
+      "additionalProperties": false
+    },
+    "MessageOfOtherTopic": {
+      "description": "contracts--event-envelope--type-of-other-topic: the type of the message belongs to the topic availability.v1.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["availability.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/BookingState"}
+      },
+      "additionalProperties": false
+    },
+    "KeyWithFreeSegment": {
+      "description": "contracts--event-envelope--key-free-segment: after the hotel the key has a free segment, which could hold an email.",
+      "type": "string",
+      "maxLength": 291,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[^:]{1,254}(?![\\s\\S])"
+    },
+    "MessageWithPatternProperties": {
+      "description": "rule--subset-forbidden-keywords--event-pattern-properties: the message with StateWithPatternProperties as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithPatternProperties"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithPatternProperties": {
+      "description": "rule--subset-forbidden-keywords--event-pattern-properties: patternProperties would admit fields with any names.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]}
+      },
+      "patternProperties": {
+        "^x_": {"type": "integer", "minimum": 0, "maximum": 1}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithTupleItems": {
+      "description": "rule--subset-items-single--event-tuple-items: the message with StateWithTupleItems as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithTupleItems"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithTupleItems": {
+      "description": "rule--subset-items-single--event-tuple-items: offered is an array with items in the tuple form of draft-07.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "offered": {
+          "type": "array",
+          "maxItems": 1,
+          "items": [{"type": "integer", "minimum": 0, "maximum": 1}]
+        }
+      },
+      "additionalProperties": false
+    },
+    "MessageWithBooleanProperty": {
+      "description": "contracts--event-closed--boolean-property-schema: the message with StateWithBooleanProperty as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithBooleanProperty"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithBooleanProperty": {
+      "description": "contracts--event-closed--boolean-property-schema: the schema of status is true, which admits any value.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": true
+      },
+      "additionalProperties": false
+    },
+    "MessageWithArrayWithoutItems": {
+      "description": "rule--array-items--event-array-without-items: the message with StateWithArrayWithoutItems as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithArrayWithoutItems"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithArrayWithoutItems": {
+      "description": "rule--array-items--event-array-without-items: status is an array without items, so its items may be anything.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "array", "maxItems": 5}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithLongDateTime": {
+      "description": "contracts--event-fields--long-date-time: the message with StateWithLongDateTime as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithLongDateTime"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithLongDateTime": {
+      "description": "contracts--event-fields--long-date-time: date is a date-time with room for 80 digits of a fraction of a second.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "date": {"type": "string", "format": "date-time", "maxLength": 100}
+      },
+      "additionalProperties": false
+    },
+    "MessageWithIpWord": {
+      "description": "contracts--event-fields--ip-word: the message with StateWithIpWord as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithIpWord"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithIpWord": {
+      "description": "contracts--event-fields--ip-word: remote_ip has the word ip, the address of a client; the short word is matched as a word of the name.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"$ref": "#/$defs/Id"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]},
+        "remote_ip": {"type": "string", "format": "uuid"}
+      },
+      "additionalProperties": false
+    }
+  }
+}

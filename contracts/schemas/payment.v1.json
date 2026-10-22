@@ -1,0 +1,68 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.v1",
+  "description": "Messages of the Kafka topic payment.v1: facts of money movement for future consumers, such as notifications and analytics. The outcomes of payments reach booking by RabbitMQ, not through this topic. Conventions are described in contracts/README.md.",
+  "$defs": {
+    "payment.charged.v1": {
+      "description": "Money was charged for a booking. payment publishes it once per booking, when it first learns of the charge: from the answer of the provider, from a status request or from the reconciliation.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.charged.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/Charge"}
+      },
+      "additionalProperties": false
+    },
+    "payment.refunded.v1": {
+      "description": "The money of a booking was returned: the refund attempt completed.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["payment.refunded.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "payload": {"$ref": "#/$defs/Refund"}
+      },
+      "additionalProperties": false
+    },
+    "PaymentKey": {
+      "description": "Record key: {hotel_id}:{booking_id}.",
+      "type": "string",
+      "maxLength": 73,
+      "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\\s\\S])"
+    },
+    "Charge": {
+      "description": "The charge of a booking: the full booking amount.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "amount"],
+      "properties": {
+        "hotel_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/HotelId"},
+        "booking_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/BookingId"},
+        "amount": {"$ref": "../openapi/common.v1.yaml#/components/schemas/Amount"}
+      },
+      "additionalProperties": false
+    },
+    "Refund": {
+      "description": "The completed refund of a booking: the whole charged amount.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "refund_attempt", "amount"],
+      "properties": {
+        "hotel_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/HotelId"},
+        "booking_id": {"$ref": "../openapi/common.v1.yaml#/components/schemas/BookingId"},
+        "refund_attempt": {"$ref": "#/$defs/RefundAttempt"},
+        "amount": {"$ref": "../openapi/common.v1.yaml#/components/schemas/Amount"}
+      },
+      "additionalProperties": false
+    },
+    "RefundAttempt": {
+      "description": "Number of the refund attempt of a booking: 1 for the first one; a manual retry adds 1. A new attempt closes the earlier ones.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 100
+    }
+  }
+}
