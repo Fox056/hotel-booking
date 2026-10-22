@@ -1,0 +1,90 @@
+# Booking creation answers 200 instead of 201, so there is no 201 to check.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--no-store-cache-control--create-without-201
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/bookings:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: createBooking
+      summary: Create a booking
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+      responses:
+        '200':
+          description: Created.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedBooking'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    BookingRequest:
+      type: object
+      required: [guest, card_token]
+      properties:
+        guest:
+          type: object
+          required: [first_name, email]
+          properties:
+            first_name:
+              type: string
+              maxLength: 100
+            email:
+              type: string
+              format: email
+              maxLength: 254
+          additionalProperties: false
+        card_token:
+          type: string
+          maxLength: 132
+      additionalProperties: false
+    CreatedBooking:
+      type: object
+      required: [booking_id]
+      properties:
+        booking_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+      additionalProperties: false

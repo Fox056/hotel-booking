@@ -1,0 +1,194 @@
+# Test helper: a small stand-in for ../../openapi/common.v1.yaml, used by the
+# fixtures in ../rules/. It lies at the same relative path, so the fixtures
+# reference it exactly as the contracts reference the real file. It is linted
+# only through the fixtures that reference it.
+openapi: 3.1.0
+info:
+  title: Common components stub for lint fixtures
+  version: 1.0.0
+components:
+  securitySchemes:
+    hotelApiKey:
+      type: http
+      scheme: bearer
+    bookingToken:
+      type: http
+      scheme: bearer
+
+  parameters:
+    HotelId:
+      name: hotel_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    RoomTypeId:
+      name: room_type_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+    BookingId:
+      name: booking_id
+      in: path
+      required: true
+      schema:
+        $ref: '#/components/schemas/Id'
+
+  headers:
+    WwwAuthenticate:
+      required: true
+      schema:
+        type: string
+        enum: [Bearer]
+    RetryAfter:
+      required: true
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 86400
+    RetryAfterOptional:
+      required: false
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 86400
+    CacheControlNoStore:
+      required: true
+      schema:
+        type: string
+        maxLength: 200
+        pattern: '(?:^|,)[ \t]*no-store[ \t]*(?:,|(?![\s\S]))'
+
+  schemas:
+    Id:
+      type: string
+      format: uuid
+    PlainText:
+      type: string
+      maxLength: 200
+
+  responses:
+    BadRequest:
+      description: Bad request.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    Unauthorized:
+      description: Missing or invalid credentials.
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WwwAuthenticate'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+    Forbidden:
+      description: Caller outside the call matrix.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    NotFound:
+      description: Not found.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    HotelNotFound:
+      description: The hotel in the path does not exist, internal call.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/hotel_not_found'
+    ContentTooLarge:
+      description: Body too large.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    UriTooLong:
+      description: Request line too long.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    UnsupportedMediaType:
+      description: Body is not JSON.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+    ValidationError:
+      description: Validation failed.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/validation_error'
+    TooManyRequests:
+      description: Rate limit of the gateway.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+    InternalServerError:
+      description: Unexpected error.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    BadGateway:
+      description: Upstream unreachable.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+    ServiceUnavailable:
+      description: Service unavailable.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfterOptional'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+    GatewayTimeout:
+      description: Upstream timeout.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+    BadGatewayInternal:
+      description: Upstream unreachable, internal call.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+    ServiceUnavailableInternal:
+      description: Service unavailable, internal call.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+    GatewayTimeoutInternal:
+      description: Upstream timeout, internal call.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'

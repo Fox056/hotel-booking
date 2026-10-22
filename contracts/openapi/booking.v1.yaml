@@ -1,0 +1,566 @@
+openapi: 3.1.0
+info:
+  title: Booking API
+  version: 1.0.0
+  description: |
+    Public API of booking for guests: create a booking with payment, view its
+    status and cancel it. Guests have no accounts: creation takes no
+    credentials, and the booking token from the 201 response gives access to
+    that one booking.
+
+    Responses of these operations carry no personal data and no card token;
+    the booking token is only in the 201 response.
+
+    Conventions are described in contracts/README.md.
+servers:
+  - url: 'https://{host}'
+    description: Gateway.
+    variables:
+      host:
+        default: localhost
+        description: Gateway host of the environment.
+tags:
+  - name: bookings
+    description: Direct bookings of guests.
+paths:
+  /v1/hotels/{hotel_id}/bookings:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: createBooking
+      summary: Create a booking with payment
+      description: |
+        Holds the rooms in inventory for 15 minutes, creates the booking in
+        `pending_payment` and answers 201 with the booking id and the booking
+        token. Payment and confirmation go on asynchronously; the guest follows
+        them through the booking status.
+
+        **Idempotency key.** The `Idempotency-Key` header is required.
+        - The key is bound to the hotel in the path and to the bytes of the
+          body of its first request for 24 hours. The same key with another
+          hotel or body gets 422 `idempotency_key_mismatch`. A client that
+          serializes the JSON again on a retry may get it too: retry with the
+          very same bytes.
+        - Stored results are 201 and 409 `no_availability`, `amount_changed`
+          and `hold_expired`. A retry with the same key gets the stored
+          response, with the original `trace_id`.
+        - 400 and 422 for the body, 404, 503 and other 5xx are not results. A
+          retry with the same key and the same body runs again; after 503 it
+          continues the same hold. A corrected request is sent with a new key.
+        - While a request with this key is running, another one gets 409
+          `request_in_progress`: retry later with the same key and body.
+
+        **Order of checks.** The key header (400 or 422), the content type
+        (415), then the key is recorded, then the body: not JSON is 400, failed
+        schema is 422. Dates relative to the hotel's local date, the sales
+        horizon and the room type are checked by the hold after that, as is the
+        hotel itself (404).
+
+        If the hold has expired or been released, or less than a minute is left
+        when a retry comes, the answer is 409 `hold_expired`: a booking never
+        gets a second hold, so create it again with a new key.
+      tags: [bookings]
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+            example:
+              room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+              check_in_date: '2026-11-10'
+              check_out_date: '2026-11-12'
+              rooms: 1
+              guests: 2
+              guest:
+                first_name: Пример
+                last_name: Гостев
+                email: guest@example.com
+                phone: '+70000000000'
+              consent:
+                accepted: true
+                text_version: '2026-10-01'
+              card_token: tok_EXAMPLEcardTokenNotReal
+              expected_amount: 1250000
+      responses:
+        '201':
+          description: |
+            The booking is created and waits for payment. The response is stored
+            under the idempotency key for 24 hours; the booking token in the
+            stored copy is encrypted.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+            Location:
+              $ref: '#/components/headers/Location'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedBooking'
+              example:
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                booking_token: bt_EXAMPLEtokenNotRealDoNotUse0000000000000000
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                status: pending_payment
+                room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                check_in_date: '2026-11-10'
+                check_out_date: '2026-11-12'
+                rooms: 1
+                amount: 1250000
+                check_in_at: '2026-11-10T11:00:00Z'
+                free_cancellation_until: '2026-11-09T11:00:00Z'
+        '400':
+          description: |
+            `idempotency_key_missing` — the `Idempotency-Key` header is missing;
+            `about:blank` — the body is not JSON, or the front rejected the
+            request.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/idempotency_key_missing'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#idempotency_key_missing
+                title: Idempotency key missing
+                status: 400
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '409':
+          description: |
+            `no_availability` — not enough rooms for at least one night;
+            `amount_changed` — the amount differs from `expected_amount`, the
+            response carries the current amount; when both are true, the answer
+            is `no_availability`;
+            `hold_expired` — a retry came after the hold had expired or been
+            released;
+            `request_in_progress` — a request with this key is still running.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/no_availability'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/amount_changed'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/hold_expired'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/request_in_progress'
+              examples:
+                no_availability:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#no_availability
+                    title: No availability
+                    status: 409
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                amount_changed:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#amount_changed
+                    title: Amount changed
+                    status: 409
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                    current_amount: 1300000
+                hold_expired:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hold_expired
+                    title: Hold expired
+                    status: 409
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          description: |
+            `validation_error` — the request did not pass validation, including
+            a malformed `Idempotency-Key`, a missing consent or an unknown
+            consent text version; a corrected request is sent with a new key;
+            `idempotency_key_mismatch` — the key is bound to another hotel or
+            body.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                oneOf:
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/validation_error'
+                  - $ref: '../schemas/problem-details.v1.json#/$defs/idempotency_key_mismatch'
+              examples:
+                validation_error:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#validation_error
+                    title: Validation error
+                    status: 422
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+                    errors:
+                      - pointer: /consent/text_version
+                        code: unknown_consent_version
+                idempotency_key_mismatch:
+                  value:
+                    type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#idempotency_key_mismatch
+                    title: Idempotency key mismatch
+                    status: 422
+                    trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+  /v1/bookings/{booking_id}:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    get:
+      operationId: getBooking
+      summary: View booking status
+      description: |
+        Returns the status and its reason, the refund status, dates, room type,
+        number of rooms, amount and the free cancellation deadline. Without the
+        `Authorization` header the answer is 401; a wrong token, another
+        booking and a missing booking are 404 alike.
+      tags: [bookings]
+      security:
+        - bookingToken: []
+      responses:
+        '200':
+          description: Current state of the booking.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                status: not_confirmed
+                not_confirmed_reason: payment_declined
+                refund_status: none
+                room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                check_in_date: '2026-11-10'
+                check_out_date: '2026-11-12'
+                rooms: 1
+                amount: 1250000
+                check_in_at: '2026-11-10T11:00:00Z'
+                free_cancellation_until: '2026-11-09T11:00:00Z'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+  /v1/bookings/{booking_id}/cancel:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
+    post:
+      operationId: cancelBooking
+      summary: Cancel a booking
+      description: |
+        Cancels a confirmed booking as a whole and answers 200 at once with the
+        current state. Rooms are released and money is returned asynchronously.
+        - Not later than `free_cancellation_until`: full refund, the refund
+          status becomes `in_progress`, then `completed`.
+        - Later, but before the check-in moment: no refund, the refund status
+          stays `none`.
+        - From the check-in moment, and for bookings in `pending_payment` or
+          `not_confirmed`: 409 `cancellation_not_allowed`. A channel booking
+          cannot be cancelled by the guest either; it has no booking token, so
+          such a request ends in 404 first.
+
+        A booking that is already cancelled always gets 200 with the current
+        state, also after the check-in moment: the deadlines are checked only
+        for a confirmed booking. Access is the same as for the status.
+      tags: [bookings]
+      security:
+        - bookingToken: []
+      responses:
+        '200':
+          description: The booking is cancelled; the body is its current state.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Booking'
+              example:
+                booking_id: 0192a3b4-c5d6-7e8f-9a0b-1c2d3e4f5a6b
+                hotel_id: 0190f5c8-7c6e-7a3b-9f1e-2b3c4d5e6f70
+                status: cancelled
+                refund_status: in_progress
+                room_type_id: 0190f5c8-8a1d-7c2e-8b3f-4a5b6c7d8e9f
+                check_in_date: '2026-11-10'
+                check_out_date: '2026-11-12'
+                rooms: 1
+                amount: 1250000
+                check_in_at: '2026-11-10T11:00:00Z'
+                free_cancellation_until: '2026-11-09T11:00:00Z'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '409':
+          description: The booking cannot be cancelled.
+          content:
+            application/problem+json:
+              schema:
+                $ref: '../schemas/problem-details.v1.json#/$defs/cancellation_not_allowed'
+              example:
+                type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#cancellation_not_allowed
+                title: Cancellation not allowed
+                status: 409
+                trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    bookingToken:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/bookingToken'
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        UUID v4 or v7 generated by the client, in either case; the server
+        compares it in lowercase. A missing key is 400
+        `idempotency_key_missing`, a malformed one is 422. Use a random key: a
+        predictable one may already be taken.
+      schema:
+        $ref: '#/components/schemas/IdempotencyKey'
+      example: 5f0c7c3a-2b1d-4e8f-9a6b-3c2d1e0f9a8b
+  headers:
+    Location:
+      required: true
+      description: Path of the new booking.
+      schema:
+        type: string
+        maxLength: 49
+        pattern: '^/v1/bookings/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])'
+  schemas:
+    IdempotencyKey:
+      type: string
+      maxLength: 36
+      pattern: '^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[47][0-9A-Fa-f]{3}-[89ABab][0-9A-Fa-f]{3}-[0-9A-Fa-f]{12}(?![\s\S])'
+    BookingStatus:
+      description: |
+        `pending_payment` — waits for payment; `confirmed`; `not_confirmed` —
+        see `not_confirmed_reason`; `cancelled`.
+      type: string
+      enum: [pending_payment, confirmed, not_confirmed, cancelled]
+    NotConfirmedReason:
+      description: |
+        `payment_declined` — the provider declined, or a status request found
+        no charge; `payment_outcome_unknown` — the payment outcome is not known
+        by the hold expiry; `hold_not_confirmed` — the money was charged, but
+        the hold could not be confirmed, so the money is returned;
+        `force_closed` — the booking was closed as stuck.
+      type: string
+      enum: [payment_declined, payment_outcome_unknown, hold_not_confirmed, force_closed]
+    RefundStatus:
+      description: '`none`, `in_progress`, `completed` or `failed`.'
+      type: string
+      enum: [none, in_progress, completed, failed]
+    BookingRequest:
+      description: |
+        The fields `room_type_id`, `check_in_date`, `check_out_date`, `rooms`
+        and `expected_amount` are named and nested exactly as in the hold of
+        inventory, so a 422 of the hold reaches the guest with the same
+        `pointer`. Unknown properties are 422 `unknown_property` with the
+        pointer of the parent object.
+      type: object
+      required: [room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount]
+      properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+        guests:
+          description: Number of guests.
+          type: integer
+          minimum: 1
+          maximum: 50
+        guest:
+          $ref: '#/components/schemas/Guest'
+        consent:
+          $ref: '#/components/schemas/Consent'
+        card_token:
+          $ref: '#/components/schemas/CardToken'
+        expected_amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ExpectedAmount'
+      additionalProperties: false
+    Guest:
+      description: |
+        Personal data of the guest. Nothing else is collected: no passport data
+        and no free-text comments. None of it comes back in any response.
+      type: object
+      required: [first_name, last_name, email]
+      properties:
+        first_name:
+          $ref: '#/components/schemas/PersonName'
+        last_name:
+          $ref: '#/components/schemas/PersonName'
+        email:
+          description: Email for the receipts.
+          type: string
+          format: email
+          maxLength: 254
+        phone:
+          description: Phone in E.164 without spaces. Optional.
+          type: string
+          maxLength: 16
+          pattern: '^\+[1-9][0-9]{7,14}(?![\s\S])'
+      additionalProperties: false
+    PersonName:
+      description: |
+        Letters, combining marks, space, hyphen, apostrophes ' and ’, and dot;
+        starts with a letter; no digits. This keeps a card number out of the
+        name, but not out of the email or the phone.
+      type: string
+      maxLength: 100
+      pattern: '^\p{L}(?:[\p{L}\p{M} .''’-]{0,98}[\p{L}\p{M}.])?(?![\s\S])'
+    Consent:
+      description: |
+        Consent to the processing of personal data. The server records the time
+        of consent. An unknown text version is 422 with the pointer
+        /consent/text_version.
+      type: object
+      required: [accepted, text_version]
+      properties:
+        accepted:
+          type: boolean
+          enum: [true]
+        text_version:
+          description: Version of the consent text that the guest accepted.
+          type: string
+          maxLength: 32
+          pattern: '^[0-9A-Za-z][0-9A-Za-z._-]{0,31}(?![\s\S])'
+      additionalProperties: false
+    CardToken:
+      description: |
+        One-time card token of the payment provider: `tok_` and 16 to 128
+        base64url characters. A run of 12 or more digits, plain or separated by
+        `-` or `_`, is refused, so a card number of 12 to 19 digits does not
+        pass as a token. A card number written another way, for example with
+        letters between the digits or in base64url, is not caught. The token is
+        never returned in any response.
+      type: string
+      maxLength: 132
+      pattern: '^tok_(?=[A-Za-z0-9_-]{16,128}(?![\s\S]))(?![A-Za-z0-9_-]*?[0-9](?:[-_]*[0-9]){11})[A-Za-z0-9_-]{16,128}(?![\s\S])'
+    BookingToken:
+      description: |
+        Secret of the guest for this booking: `bt_` and 43 base64url characters.
+        Shown once, in the 201 response.
+      type: string
+      maxLength: 46
+      pattern: '^bt_[A-Za-z0-9_-]{43}(?![\s\S])'
+    FreeCancellationUntil:
+      description: |
+        Free cancellation deadline in UTC: the check-in moment minus 24 hours,
+        fixed at creation. Without a fraction of a second: YYYY-MM-DDThh:mm:ssZ.
+      type: string
+      format: date-time
+      maxLength: 20
+      pattern: 'Z(?![\s\S])'
+    Booking:
+      description: |
+        Booking as the guest sees it. `not_confirmed_reason` is present only
+        with the status `not_confirmed`.
+      type: object
+      required: [booking_id, hotel_id, status, refund_status, room_type_id, check_in_date, check_out_date, rooms, amount, check_in_at, free_cancellation_until]
+      properties:
+        booking_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/BookingId'
+        hotel_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/HotelId'
+        status:
+          $ref: '#/components/schemas/BookingStatus'
+        not_confirmed_reason:
+          $ref: '#/components/schemas/NotConfirmedReason'
+        refund_status:
+          $ref: '#/components/schemas/RefundStatus'
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+        amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Amount'
+        check_in_at:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInAt'
+        free_cancellation_until:
+          $ref: '#/components/schemas/FreeCancellationUntil'
+      additionalProperties: false
+    CreatedBooking:
+      description: |
+        The new booking and its token. A retry with the same key returns this
+        stored response as is, so the status here is always `pending_payment`;
+        the current state comes from the booking status. The fields are listed
+        in full: a closed schema cannot be composed with `allOf`.
+      type: object
+      required: [booking_id, booking_token, hotel_id, status, room_type_id, check_in_date, check_out_date, rooms, amount, check_in_at, free_cancellation_until]
+      properties:
+        booking_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/BookingId'
+        booking_token:
+          $ref: '#/components/schemas/BookingToken'
+        hotel_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/HotelId'
+        status:
+          type: string
+          enum: [pending_payment]
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeId'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Rooms'
+        amount:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Amount'
+        check_in_at:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInAt'
+        free_cancellation_until:
+          $ref: '#/components/schemas/FreeCancellationUntil'
+      additionalProperties: false

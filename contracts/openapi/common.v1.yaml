@@ -1,0 +1,392 @@
+openapi: 3.1.0
+info:
+  title: Hotel Booking common components
+  version: 1.0.0
+  description: |
+    Components shared by the v1 contracts of the services: security schemes,
+    parameters, headers, field schemas, and the responses of the front and the
+    gateway. The document has no operations; service contracts reference it.
+
+    Conventions are described in contracts/README.md.
+components:
+  securitySchemes:
+    hotelApiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Hotel API key `hk_…` in `Authorization: Bearer`. It gives access only to
+        the hotels of this key. A missing or wrong key is 401; another hotel or
+        a missing resource is 404.
+    bookingToken:
+      type: http
+      scheme: bearer
+      description: |
+        Booking token `bt_…` from the 201 response of booking creation, in
+        `Authorization: Bearer`. It gives access only to its own booking.
+        Without the `Authorization` header the response is 401; any other value
+        except the matching token is 404, as for a missing booking. The token is
+        never sent in the URL.
+
+  parameters:
+    HotelId:
+      name: hotel_id
+      in: path
+      required: true
+      description: Hotel id.
+      schema:
+        $ref: '#/components/schemas/HotelId'
+    RoomTypeId:
+      name: room_type_id
+      in: path
+      required: true
+      description: Room type id.
+      schema:
+        $ref: '#/components/schemas/RoomTypeId'
+    BookingId:
+      name: booking_id
+      in: path
+      required: true
+      description: Booking id.
+      schema:
+        $ref: '#/components/schemas/BookingId'
+
+  headers:
+    WwwAuthenticate:
+      required: true
+      description: Authentication scheme for a 401 response.
+      schema:
+        type: string
+        enum: [Bearer]
+    RetryAfter:
+      required: true
+      description: Seconds to wait before a retry.
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 86400
+    RetryAfterOptional:
+      required: false
+      description: |
+        Seconds to wait before a retry. A 503 of the service always carries it;
+        the plain-text 503 of the gateway does not.
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 86400
+    CacheControlNoStore:
+      required: true
+      description: |
+        The response contains a booking token or the booking state, so it must
+        not be stored by any cache. The value contains the `no-store` directive;
+        other directives, such as `private`, may come along.
+      schema:
+        type: string
+        maxLength: 200
+        pattern: '(?:^|,)[ \t]*no-store[ \t]*(?:,|(?![\s\S]))'
+
+  schemas:
+    HotelId:
+      description: Hotel id, a UUID in lowercase.
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])'
+    RoomTypeId:
+      description: Room type id, a UUID in lowercase.
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])'
+    BookingId:
+      description: Booking id, a UUID in lowercase. The server generates it.
+      type: string
+      format: uuid
+      pattern: '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?![\s\S])'
+    CheckInDate:
+      description: |
+        Check-in date in the hotel's time zone. The stay is the half-open
+        interval of nights [check_in_date, check_out_date).
+      type: string
+      format: date
+    CheckOutDate:
+      description: Check-out date in the hotel's time zone. This night is not part of the stay.
+      type: string
+      format: date
+    Rooms:
+      description: Number of rooms of one room type in a direct booking.
+      type: integer
+      minimum: 1
+      maximum: 5
+    Amount:
+      description: |
+        Booking amount in kopecks: the sum of nightly prices multiplied by the
+        number of rooms. Only rubles in v1, so there is no currency field.
+      type: integer
+      minimum: 1
+      maximum: 15000000000
+    ExpectedAmount:
+      description: |
+        Amount in kopecks that the client expects, usually the `amount` from
+        search. The server compares it with its own amount and charges only the
+        server amount; a mismatch is 409 `amount_changed`.
+      type: integer
+      minimum: 1
+      maximum: 15000000000
+    CheckInAt:
+      description: |
+        Check-in moment in UTC: the check-in date at the hotel's check-in time in
+        its time zone, fixed in the booking. Without a fraction of a second:
+        YYYY-MM-DDThh:mm:ssZ.
+      type: string
+      format: date-time
+      maxLength: 20
+      pattern: 'Z(?![\s\S])'
+    PlainText:
+      description: Plain-text body of a response that the gateway sends itself.
+      type: string
+      maxLength: 200
+
+  responses:
+    BadRequest:
+      description: |
+        Malformed request, for example headers too large for the front. The
+        front sends it before the service sees the request, so trace_id is
+        present only if the front had read traceparent.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Bad Request
+            status: 400
+    Unauthorized:
+      description: Missing or invalid credentials.
+      headers:
+        WWW-Authenticate:
+          $ref: '#/components/headers/WwwAuthenticate'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    Forbidden:
+      description: |
+        The caller is not in the call matrix, or the request came from a network
+        that may not reach this part of the API. Both mean broken configuration,
+        not an answer on the merits.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Forbidden
+            status: 403
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    NotFound:
+      description: |
+        The resource does not exist or belongs to someone else; the two cases
+        are not told apart. A malformed id in the path is also 404. If the id
+        has characters that the gateway does not route, the gateway itself
+        answers 404, without trace_id.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    HotelNotFound:
+      description: The hotel in the path does not exist.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/hotel_not_found'
+          example:
+            type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#hotel_not_found
+            title: Hotel not found
+            status: 404
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ContentTooLarge:
+      description: The request body is larger than the front accepts.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Content Too Large
+            status: 413
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    UriTooLong:
+      description: |
+        The request line is too long. The front answers before it reads any
+        header, so this response never has trace_id.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: URI Too Long
+            status: 414
+    UnsupportedMediaType:
+      description: The request body is not `application/json`.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Unsupported Media Type
+            status: 415
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ValidationError:
+      description: The request did not pass validation.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/validation_error'
+          example:
+            type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#validation_error
+            title: Validation error
+            status: 422
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+            errors:
+              - pointer: /check_out_date
+                code: not_after_start
+    TooManyRequests:
+      description: |
+        Rate limit of the gateway. The gateway answers itself, in plain text,
+        with `Retry-After`.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+          example: Too Many Requests
+    InternalServerError:
+      description: Unexpected error of the front or the service.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Internal Server Error
+            status: 500
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    BadGateway:
+      description: |
+        The front could not reach the service process, or the gateway could not
+        reach the front. Part of the work may already be done: retry with the
+        same idempotency key where the operation has one.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Bad Gateway
+            status: 502
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+          example: Bad Gateway
+    ServiceUnavailable:
+      description: |
+        The service cannot answer now, for example a dependency is down. The
+        service answers in Problem Details with `Retry-After`; the gateway
+        answers in plain text without it when the service container is down.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfterOptional'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+          example: Service Unavailable
+    GatewayTimeout:
+      description: |
+        The service did not answer in time. Part of the work may already be
+        done: retry with the same idempotency key where the operation has one.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Gateway Timeout
+            status: 504
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        text/plain:
+          schema:
+            $ref: '#/components/schemas/PlainText'
+          example: Gateway Timeout
+    BadGatewayInternal:
+      description: |
+        The front could not reach the service process. Internal calls go over
+        the pair network past the gateway, so the body is always Problem Details.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Bad Gateway
+            status: 502
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ServiceUnavailableInternal:
+      description: The service cannot answer now. The caller retries after `Retry-After`.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    GatewayTimeoutInternal:
+      description: The service did not answer the front in time.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Gateway Timeout
+            status: 504
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    RouteNotFound:
+      description: |
+        The gateway has no route for this method and path. It answers from a
+        static error page server, on any method, without trace_id. Not attached
+        to operations: a client gets it only for a path outside the contract.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404

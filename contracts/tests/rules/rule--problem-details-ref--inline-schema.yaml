@@ -1,0 +1,58 @@
+# A Problem Details schema written inline instead of a $ref to the catalog.
+openapi: 3.1.0
+info:
+  title: Fixture rule--problem-details-ref--inline-schema
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability
+      security: []
+      responses:
+        '200':
+          description: Offers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          description: Not found.
+          content:
+            application/problem+json:
+              schema:
+                type: object
+                required: [title]
+                properties:
+                  title:
+                    type: string
+                    maxLength: 100
+                additionalProperties: false
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  schemas:
+    Result:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+      additionalProperties: false

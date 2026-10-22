@@ -1,0 +1,685 @@
+# Lint configuration of the contracts. Run it through bin/check.sh: it pins
+# Redocly CLI 2.60.0 and also checks that every own rule fires on its fixture
+# in tests/rules/.
+#
+# Own rules have severity error. Configurable rules are named rule/<name>;
+# rules of lint/plugin.js are named contracts/<name>, the plugin explains why
+# each of them cannot be a configurable rule.
+#
+# Two properties of Redocly 2.60.0 shape the configurable rules below:
+# - in a `schema` assertion every subschema with `properties` is closed by
+#   default (unevaluatedProperties: false), so the schemas here set
+#   `unevaluatedProperties: true` where other keys may appear;
+# - an assertion resolves `$ref` only in the checked property itself; nested
+#   values are seen as written, with `$ref` unresolved.
+
+extends: [recommended]
+plugins: [./lint/plugin.js]
+telemetry: off
+
+apis:
+  common@v1:
+    root: openapi/common.v1.yaml
+    rules:
+      # The document has only components: no servers, no operations, and its
+      # components are used by the other documents.
+      no-empty-servers: off
+      no-unused-components: off
+      security-defined: off
+  inventory@v1:
+    root: openapi/inventory.v1.yaml
+  inventory-internal@v1:
+    root: openapi/inventory-internal.v1.yaml
+  booking@v1:
+    root: openapi/booking.v1.yaml
+
+rules:
+  # The repository has no license.
+  info-license: off
+  # Media types of error responses are checked by contracts/error-media-types.
+  operation-4xx-problem-details-rfc7807: off
+  no-invalid-media-type-examples:
+    severity: error
+    allowAdditionalProperties: false
+  no-invalid-schema-examples: error
+  no-invalid-parameter-examples: error
+
+  # --- Paths ---
+
+  rule/path-version-prefix:
+    severity: error
+    message: Path must start with /v1/ or /internal/v1/
+    subject:
+      type: Paths
+    assertions:
+      pattern: '/^\/(?:internal\/)?v1\//'
+
+  contracts/no-webhooks-callbacks: error
+
+  # --- Access ---
+
+  rule/operation-security-explicit:
+    severity: error
+    message: Operation must declare `security` explicitly, at least an empty list
+    subject:
+      type: Operation
+      property: security
+    assertions:
+      defined: true
+
+  # Exceptions are pairs of method and path, so the rule is in the plugin.
+  contracts/security-empty-only-guest: error
+
+  rule/internal-operation-shape:
+    severity: error
+    message: 'Internal operation must have `security: [{serviceToken: []}]` and `x-callers: [booking]`. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^\/internal\//'
+      property: &http-methods [get, put, post, delete, options, head, patch, trace]
+    assertions:
+      schema:
+        type: object
+        required: [security, x-callers]
+        properties:
+          security:
+            const: [{serviceToken: []}]
+          x-callers:
+            const: [booking]
+        unevaluatedProperties: true
+
+  rule/public-operation-shape:
+    severity: error
+    message: 'Public operation must have no `x-callers` and must not use serviceToken. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^(?!\/internal\/)/'
+      property: *http-methods
+    assertions:
+      schema:
+        type: object
+        not:
+          required: [x-callers]
+        properties:
+          security:
+            type: array
+            items:
+              type: object
+              not:
+                required: [serviceToken]
+        unevaluatedProperties: true
+
+  # A scheme may also be a $ref to the scheme of the same name in
+  # common.v1.yaml: its shape is checked when common.v1.yaml is linted.
+  rule/security-scheme-shape:
+    severity: error
+    message: 'Security schemes: hotelApiKey and bookingToken are http bearer, serviceToken is http bearer JWT and is the only scheme of its document, no other schemes. Details: {{problems}}'
+    subject:
+      type: Components
+      property: securitySchemes
+    assertions:
+      schema:
+        type: object
+        propertyNames:
+          enum: [hotelApiKey, bookingToken, serviceToken]
+        dependentSchemas:
+          serviceToken:
+            maxProperties: 1
+        properties:
+          hotelApiKey:
+            anyOf:
+              - type: object
+                required: [type, scheme]
+                properties:
+                  type: {const: http}
+                  scheme: {const: bearer}
+                  description: {type: string}
+                additionalProperties: false
+              - type: object
+                minProperties: 1
+                maxProperties: 1
+                propertyNames: {const: $ref}
+                additionalProperties:
+                  type: string
+                  pattern: '^(?:\.\./)+openapi/common\.v1\.yaml#/components/securitySchemes/hotelApiKey$'
+          bookingToken:
+            anyOf:
+              - type: object
+                required: [type, scheme]
+                properties:
+                  type: {const: http}
+                  scheme: {const: bearer}
+                  description: {type: string}
+                additionalProperties: false
+              - type: object
+                minProperties: 1
+                maxProperties: 1
+                propertyNames: {const: $ref}
+                additionalProperties:
+                  type: string
+                  pattern: '^(?:\.\./)+openapi/common\.v1\.yaml#/components/securitySchemes/bookingToken$'
+          serviceToken:
+            type: object
+            required: [type, scheme, bearerFormat]
+            properties:
+              type: {const: http}
+              scheme: {const: bearer}
+              bearerFormat: {const: JWT}
+              description: {type: string}
+            additionalProperties: false
+        unevaluatedProperties: true
+
+  # ADR-0007: serviceToken is described in the internal contract. A document
+  # that describes it has only internal paths, so neither the public documents
+  # nor common.v1.yaml can describe it.
+  rule/service-token-internal-only:
+    severity: error
+    message: 'serviceToken may be described only in the internal contract: every path of this document must start with /internal/v1/. Details: {{problems}}'
+    subject:
+      type: Root
+      property: paths
+    where:
+      - subject:
+          type: Root
+          property: components
+        assertions:
+          defined: true
+          schema:
+            type: object
+            required: [securitySchemes]
+            properties:
+              securitySchemes:
+                type: object
+                required: [serviceToken]
+            unevaluatedProperties: true
+    assertions:
+      defined: true
+      schema:
+        type: object
+        minProperties: 1
+        propertyNames:
+          pattern: '^/internal/v1/'
+
+  rule/secured-operation-401:
+    severity: error
+    message: Operation with credentials in `security` must have a 401 response
+    subject:
+      type: Operation
+      property: responses
+    where:
+      - subject:
+          type: Operation
+          property: security
+        assertions:
+          defined: true
+          schema:
+            type: array
+            contains:
+              type: object
+              minProperties: 1
+    assertions:
+      schema:
+        type: object
+        required: ['401']
+
+  rule/booking-token-404:
+    severity: error
+    message: Operation secured by bookingToken must have a 404 response
+    subject:
+      type: Operation
+      property: responses
+    where:
+      - subject:
+          type: Operation
+          property: security
+        assertions:
+          defined: true
+          schema:
+            type: array
+            contains:
+              type: object
+              required: [bookingToken]
+    assertions:
+      schema:
+        type: object
+        required: ['404']
+
+  rule/hotel-api-key-404:
+    severity: error
+    message: Operation secured by hotelApiKey must have a 404 response
+    subject:
+      type: Operation
+      property: responses
+    where:
+      - subject:
+          type: Operation
+          property: security
+        assertions:
+          defined: true
+          schema:
+            type: array
+            contains:
+              type: object
+              required: [hotelApiKey]
+    assertions:
+      schema:
+        type: object
+        required: ['404']
+
+  rule/internal-403-404:
+    severity: error
+    message: 'Internal operation must have 403 and 404 responses. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^\/internal\//'
+      property: *http-methods
+    assertions:
+      schema:
+        type: object
+        required: [responses]
+        properties:
+          responses:
+            type: object
+            required: ['403', '404']
+        unevaluatedProperties: true
+
+  contracts/unauthorized-shape: error
+  contracts/no-store-cache-control: error
+
+  # --- Responses ---
+
+  rule/public-response-set:
+    severity: error
+    message: 'Public operation must have responses 400, 414, 429, 500, 502, 503 and 504, and 413 and 415 if it has a request body. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^(?!\/internal\/)/'
+      property: *http-methods
+    assertions:
+      schema:
+        type: object
+        required: [responses]
+        properties:
+          responses:
+            type: object
+            required: ['400', '414', '429', '500', '502', '503', '504']
+        if:
+          type: object
+          required: [requestBody]
+        then:
+          properties:
+            responses:
+              type: object
+              required: ['413', '415']
+          unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  rule/internal-response-set:
+    severity: error
+    message: 'Internal operation must have responses 400, 401, 403, 404, 414, 500, 502, 503 and 504, and 413 and 415 if it has a request body, and no 429. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^\/internal\//'
+      property: *http-methods
+    assertions:
+      schema:
+        type: object
+        required: [responses]
+        properties:
+          responses:
+            type: object
+            required: ['400', '401', '403', '404', '414', '500', '502', '503', '504']
+            not:
+              required: ['429']
+        if:
+          type: object
+          required: [requestBody]
+        then:
+          properties:
+            responses:
+              type: object
+              required: ['413', '415']
+          unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  contracts/error-media-types: error
+  contracts/problem-type-by-code: error
+  contracts/retry-after-429: error
+  contracts/retry-after-503-internal: error
+  contracts/response-closed: error
+
+  # The media type map of a response is never a $ref, so the schema of
+  # application/problem+json is seen here exactly as written.
+  rule/problem-details-ref:
+    severity: error
+    message: 'Schema of application/problem+json must be a $ref to ../schemas/problem-details.v1.json#/$defs/<type>, or `type: object` with a oneOf of such $ref. Details: {{problems}}'
+    subject:
+      type: MediaTypesMap
+      property: application/problem+json
+    assertions:
+      schema:
+        type: object
+        required: [schema]
+        properties:
+          schema:
+            if:
+              type: object
+              required: [$ref]
+            then: &problem-details-ref
+              type: object
+              minProperties: 1
+              maxProperties: 1
+              propertyNames: {const: $ref}
+              additionalProperties:
+                type: string
+                pattern: '^(?:\.\./)+schemas/problem-details\.v1\.json#/\$defs/[A-Za-z0-9_.-]+$'
+            else:
+              type: object
+              required: [type, oneOf]
+              properties:
+                type: {const: object}
+                oneOf:
+                  type: array
+                  minItems: 1
+                  items: *problem-details-ref
+                description: {type: string}
+              additionalProperties: false
+        unevaluatedProperties: true
+
+  # --- Booking document: enumerations and the body with personal data ---
+  # These rules apply to the document of bookings, the one with paths under
+  # /v1/bookings/, and require the schemas inline in its components/schemas.
+  # The subject is the root, so a document without components/schemas fails
+  # too instead of being skipped.
+
+  rule/booking-status-enum:
+    severity: error
+    message: 'components/schemas/BookingStatus must be defined inline with `type: string` and `enum: [pending_payment, confirmed, not_confirmed, cancelled]`. Details: {{problems}}'
+    subject:
+      type: Root
+      property: components
+    where:
+      - &booking-document
+        subject:
+          type: Root
+          property: paths
+        assertions:
+          defined: true
+          schema:
+            type: object
+            not:
+              propertyNames:
+                not:
+                  pattern: '^/v1/bookings/'
+    assertions:
+      defined: true
+      schema:
+        type: object
+        required: [schemas]
+        properties:
+          schemas:
+            type: object
+            required: [BookingStatus]
+            properties:
+              BookingStatus:
+                type: object
+                required: [type, enum]
+                properties:
+                  type: {const: string}
+                  enum:
+                    const: [pending_payment, confirmed, not_confirmed, cancelled]
+                unevaluatedProperties: true
+            unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  rule/not-confirmed-reason-enum:
+    severity: error
+    message: 'components/schemas/NotConfirmedReason must be defined inline with `type: string` and `enum: [payment_declined, payment_outcome_unknown, hold_not_confirmed, force_closed]`. Details: {{problems}}'
+    subject:
+      type: Root
+      property: components
+    where:
+      - *booking-document
+    assertions:
+      defined: true
+      schema:
+        type: object
+        required: [schemas]
+        properties:
+          schemas:
+            type: object
+            required: [NotConfirmedReason]
+            properties:
+              NotConfirmedReason:
+                type: object
+                required: [type, enum]
+                properties:
+                  type: {const: string}
+                  enum:
+                    const: [payment_declined, payment_outcome_unknown, hold_not_confirmed, force_closed]
+                unevaluatedProperties: true
+            unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  rule/refund-status-enum:
+    severity: error
+    message: 'components/schemas/RefundStatus must be defined inline with `type: string` and `enum: [none, in_progress, completed, failed]`. Details: {{problems}}'
+    subject:
+      type: Root
+      property: components
+    where:
+      - *booking-document
+    assertions:
+      defined: true
+      schema:
+        type: object
+        required: [schemas]
+        properties:
+          schemas:
+            type: object
+            required: [RefundStatus]
+            properties:
+              RefundStatus:
+                type: object
+                required: [type, enum]
+                properties:
+                  type: {const: string}
+                  enum:
+                    const: [none, in_progress, completed, failed]
+                unevaluatedProperties: true
+            unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  # The body with personal data has only the fields that booking needs (PRD,
+  # П-15). A new field in it is a deliberate change of this rule.
+  rule/booking-request-fields:
+    severity: error
+    message: 'components/schemas/BookingRequest must have exactly the properties room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount, and Guest exactly first_name, last_name, email, phone. Details: {{problems}}'
+    subject:
+      type: Root
+      property: components
+    where:
+      - *booking-document
+    assertions:
+      defined: true
+      schema:
+        type: object
+        required: [schemas]
+        properties:
+          schemas:
+            type: object
+            required: [BookingRequest, Guest]
+            properties:
+              BookingRequest:
+                type: object
+                required: [properties]
+                properties:
+                  properties:
+                    type: object
+                    required: &booking-request-fields [room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount]
+                    propertyNames:
+                      enum: *booking-request-fields
+                unevaluatedProperties: true
+              Guest:
+                type: object
+                required: [properties]
+                properties:
+                  properties:
+                    type: object
+                    required: &guest-fields [first_name, last_name, email, phone]
+                    propertyNames:
+                      enum: *guest-fields
+                unevaluatedProperties: true
+            unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  # --- Parameters ---
+
+  # The list is addressed by index: then a $ref parameter is resolved and its
+  # `in` and `name` are checked together. Up to 20 parameters per list.
+  rule/parameter-allowlist:
+    severity: error
+    message: 'Parameter is not allowed: path - hotel_id, room_type_id, booking_id; query - from, to, check_in_date, check_out_date, rooms; header - Idempotency-Key; no cookie parameters. Details: {{problems}}'
+    subject:
+      type: ParameterList
+      property: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
+    assertions:
+      schema:
+        type: object
+        required: [in, name]
+        properties:
+          in:
+            enum: [path, query, header]
+        allOf:
+          - if:
+              properties:
+                in: {const: path}
+              unevaluatedProperties: true
+            then:
+              properties:
+                name:
+                  enum: [hotel_id, room_type_id, booking_id]
+              unevaluatedProperties: true
+          - if:
+              properties:
+                in: {const: query}
+              unevaluatedProperties: true
+            then:
+              properties:
+                name:
+                  enum: [from, to, check_in_date, check_out_date, rooms]
+              unevaluatedProperties: true
+          - if:
+              properties:
+                in: {const: header}
+              unevaluatedProperties: true
+            then:
+              properties:
+                name:
+                  enum: [Idempotency-Key]
+              unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  contracts/pii-placement:
+    severity: error
+    # Operations whose responses may contain personal data, as "METHOD path".
+    # None in v1.
+    allowedResponses: []
+
+  # --- Limits and closed bodies ---
+
+  contracts/string-limit: error
+
+  # `const` and the other value assertions pass when the property is absent,
+  # so a `where` on a value also needs `defined: true`: otherwise the rule
+  # would apply to every schema without `type`.
+  rule/array-limit:
+    severity: error
+    message: Array schema must have maxItems
+    subject:
+      type: Schema
+    where:
+      - subject:
+          type: Schema
+          property: type
+        assertions:
+          defined: true
+          const: array
+    assertions:
+      required: [maxItems]
+
+  # A bound on one side only, even next to enum, is a mistake as well.
+  rule/integer-limit:
+    severity: error
+    message: Integer schema must have enum, or both minimum and maximum; a single bound is not allowed, even next to enum
+    subject:
+      type: Schema
+    where:
+      - subject:
+          type: Schema
+          property: type
+        assertions:
+          defined: true
+          const: integer
+    assertions:
+      requireAny: [enum, minimum, maximum]
+      mutuallyRequired: [minimum, maximum]
+
+  # The same limits for `type: number`.
+  rule/number-limit:
+    severity: error
+    message: Number schema must have enum, or both minimum and maximum; a single bound is not allowed, even next to enum
+    subject:
+      type: Schema
+    where:
+      - subject:
+          type: Schema
+          property: type
+        assertions:
+          defined: true
+          const: number
+    assertions:
+      requireAny: [enum, minimum, maximum]
+      mutuallyRequired: [minimum, maximum]
+
+  contracts/public-request-closed: error
+
+  # --- Subset of OpenAPI 3.1 understood by league/openapi-psr7-validator 0.24 ---
+
+  rule/subset-forbidden-keywords:
+    severity: error
+    message: Keyword is outside the subset of OpenAPI 3.1 that the response validator understands
+    subject:
+      type: Schema
+    assertions:
+      disallowed: [const, unevaluatedProperties, unevaluatedItems, patternProperties, propertyNames, if, then, else,
+        dependentSchemas, dependentRequired, prefixItems, contains, exclusiveMinimum, exclusiveMaximum, $id, $anchor,
+        $dynamicRef, $dynamicAnchor, nullable]
+
+  # Only a pure $ref may go without `type`, and the walker never shows a pure
+  # $ref to this rule: it sees the resolved schema.
+  rule/subset-type-single:
+    severity: error
+    message: Schema must have `type`, a single string, not a list
+    subject:
+      type: Schema
+      property: type
+    assertions:
+      defined: true
+      schema:
+        type: string
+
+  contracts/subset-closed-object: error
+
+  # An unescaped `$`, also inside brackets, or \d, \D, \w, \W.
+  rule/subset-pattern-portable:
+    severity: error
+    message: 'Pattern must not use an unescaped $ or \d, \D, \w, \W: write the end of the string as (?![\s\S]) and classes such as [0-9] explicitly'
+    subject:
+      type: Schema
+      property: pattern
+    assertions:
+      notPattern: '/(?:^|[^\\])(?:\\\\)*(?:\$|\\[dDwW])/'
+
+  contracts/ref-form: error
+  contracts/ref-siblings: error
