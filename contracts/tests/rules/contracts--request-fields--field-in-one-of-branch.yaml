@@ -1,9 +1,10 @@
-# The guest of the booking webhook is an object without properties: under the
-# one line guest of the allowed list it would take any nested field, and the
-# fields of the guest that the list names are missing.
+# The guest of the booking webhook is a oneOf of two open branches, and only
+# the second lists middle_name: a field of one branch is a field of the body
+# too. The booking webhook is in allowedRequests, so a name of personal data
+# passes there: only the allowed list catches guest.middle_name.
 openapi: 3.1.0
 info:
-  title: Fixture contracts--webhook-fields--open-container
+  title: Fixture contracts--request-fields--field-in-one-of-branch
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -110,3 +111,39 @@ components:
           $ref: '#/components/schemas/ChannelGuest'
     ChannelGuest:
       type: object
+      oneOf:
+        - type: object
+          required: [first_name, last_name]
+          properties:
+            first_name:
+              type: string
+              maxLength: 100
+            last_name:
+              type: string
+              maxLength: 100
+            email:
+              type: string
+              format: email
+              maxLength: 254
+            phone:
+              type: string
+              maxLength: 16
+        - type: object
+          required: [email]
+          properties:
+            first_name:
+              type: string
+              maxLength: 100
+            middle_name:
+              type: string
+              maxLength: 100
+            last_name:
+              type: string
+              maxLength: 100
+            email:
+              type: string
+              format: email
+              maxLength: 254
+            phone:
+              type: string
+              maxLength: 16

@@ -1,8 +1,10 @@
 # Control fixture: correct public operations of each kind - guest search,
 # guest booking creation with a closed body, an operation secured by
 # bookingToken and one secured by hotelApiKey. With a path under /v1/bookings/
-# it is also a document of bookings, so it has the booking enumerations and
-# the exact booking request. No rule may report anything here.
+# it is also a document of bookings, so it has the booking enumerations. The
+# body of booking creation has exactly the fields of its list in
+# contracts/request-fields, through $ref and a nested object. No rule may
+# report anything here.
 # Internal operations are in valid--internal.yaml: serviceToken may be
 # described only in a document whose paths are all internal.
 openapi: 3.1.0
@@ -276,6 +278,9 @@ components:
             accepted:
               type: boolean
               enum: [true]
+            text_version:
+              type: string
+              maxLength: 32
           additionalProperties: false
         card_token:
           type: string

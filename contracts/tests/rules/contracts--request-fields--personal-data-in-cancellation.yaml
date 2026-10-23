@@ -1,18 +1,20 @@
-# A webhook of a kind that has no allowed list: every webhook path needs its
-# list of fields in the option of the rule.
+# A personal data field in the body of the cancellation webhook: of the
+# webhooks, only the booking webhook is in allowedRequests. The field is also
+# outside the allowed list of the cancellation webhook, and the rule reports
+# both.
 openapi: 3.1.0
 info:
-  title: Fixture contracts--webhook-fields--unlisted-webhook
+  title: Fixture contracts--request-fields--personal-data-in-cancellation
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
 paths:
-  /v1/channels/{channel_id}/hotels/{hotel_id}/modifications:
+  /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations:
     parameters:
       - $ref: '../openapi/common.v1.yaml#/components/parameters/ChannelId'
       - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
     post:
-      operationId: receiveChannelModification
+      operationId: receiveChannelCancellation
       summary: Receive a cancellation of a channel
       security:
         - channelApiKey: []
@@ -81,3 +83,7 @@ components:
         external_id:
           type: string
           maxLength: 128
+        email:
+          type: string
+          format: email
+          maxLength: 254

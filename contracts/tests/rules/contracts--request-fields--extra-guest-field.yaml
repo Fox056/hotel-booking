@@ -1,7 +1,10 @@
-# The body of the booking webhook lacks guests, a field of its allowed list.
+# The guest of the booking webhook has a field beyond first_name, last_name,
+# email and phone: guest.passport is not in the allowed list. The booking
+# webhook is in allowedRequests, so a name of personal data passes there: the
+# list is what keeps the passport out.
 openapi: 3.1.0
 info:
-  title: Fixture contracts--webhook-fields--missing-field
+  title: Fixture contracts--request-fields--extra-guest-field
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -101,6 +104,10 @@ components:
         check_out_date:
           type: string
           format: date
+        guests:
+          type: integer
+          minimum: 1
+          maximum: 20000
         guest:
           $ref: '#/components/schemas/ChannelGuest'
     ChannelGuest:
@@ -120,3 +127,6 @@ components:
         phone:
           type: string
           maxLength: 16
+        passport:
+          type: string
+          maxLength: 20
