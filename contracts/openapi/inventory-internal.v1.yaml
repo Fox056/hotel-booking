@@ -402,10 +402,7 @@ components:
         check_out_date:
           $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
         rooms:
-          description: Number of rooms. Channel bookings are not limited to 5.
-          type: integer
-          minimum: 1
-          maximum: 1000
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ChannelRooms'
     ChannelSaleResult:
       type: object
       required: [overbooked_on_acceptance]

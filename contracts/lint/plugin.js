@@ -40,6 +40,25 @@ const { isDeepStrictEqual } = require('node:util');
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
 const INTERNAL_PATH = /^\/internal\//;
+// Webhooks of the channels: the paths under /v1/channels/. The configurable
+// rules select them by the same prefix. The path of a webhook is
+// WEBHOOK_PREFIX and one kebab-case segment, the kind of the webhook: a
+// template after it could bring an external booking id into the path.
+const WEBHOOK_PATH = /^\/v1\/channels\//;
+const WEBHOOK_PREFIX = '/v1/channels/{channel_id}/hotels/{hotel_id}/';
+const WEBHOOK_PATH_FORM = /^\/v1\/channels\/\{channel_id\}\/hotels\/\{hotel_id\}\/[a-z]+(?:-[a-z]+)*$/;
+const CHANNEL_KEY_SCHEME = 'channelApiKey';
+// The headers of the signature and the exact patterns of their schemas: a
+// pattern without the end anchor would let through a header that the front
+// glued from two lines with ", ".
+const SIGNATURE_HEADER_PATTERNS = {
+  'X-Timestamp': '^[0-9]{10}(?![\\s\\S])',
+  'X-Signature': '^v1=[0-9a-f]{64}(?![\\s\\S])',
+};
+const JSON_MEDIA_TYPE = 'application/json';
+// A field of a webhook body in the option of contracts/webhook-fields:
+// snake_case names joined with dots, [] after the name of an array.
+const WEBHOOK_FIELD = /^[a-z][a-z0-9_]*(?:\[\])?(?:\.[a-z][a-z0-9_]*(?:\[\])?)*$/;
 const PROBLEM_JSON = 'application/problem+json';
 const TEXT_PLAIN = 'text/plain';
 
@@ -264,6 +283,7 @@ function forEachOperation(ctx, paths, callback) {
           path,
           key: `${method.toUpperCase()} ${path}`,
           internal: INTERNAL_PATH.test(path),
+          webhook: WEBHOOK_PATH.test(path),
           operation,
           location: location.child([method]),
           pathItem,
@@ -742,17 +762,19 @@ function RetryAfter503Internal() {
   };
 }
 
-// Personal data appears only in the request body of booking creation and in
-// responses of the operations in `allowedResponses`; the booking token only in
-// the 201 response of booking creation. Neither appears in parameters. Names
-// are matched as described at PII_PARTS; schemas are followed through every
-// $ref.
+// Personal data appears only in the request bodies of the operations in
+// `allowedRequests` and in responses of the operations in `allowedResponses`;
+// the booking token only in the 201 response of booking creation. Neither
+// appears in parameters. Names are matched as described at PII_PARTS; schemas
+// are followed through every $ref.
 function PiiPlacement(options) {
-  const allowedResponses = options.allowedResponses;
-  if (!Array.isArray(allowedResponses) || !allowedResponses.every((item) => /^[A-Z]+ \/\S*$/.test(item))) {
-    throw new Error('contracts/pii-placement: option allowedResponses must be a list of "METHOD path", empty if none');
+  const { allowedRequests, allowedResponses } = options;
+  for (const [name, list] of Object.entries({ allowedRequests, allowedResponses })) {
+    if (!Array.isArray(list) || !list.every((item) => /^[A-Z]+ \/\S*$/.test(item))) {
+      throw new Error(`contracts/pii-placement: option ${name} must be a list of "METHOD path", empty if none`);
+    }
   }
-  const personalDataPlaces = `the request body of ${CREATE_BOOKING}`
+  const personalDataPlaces = (allowedRequests.length > 0 ? `the request bodies of ${allowedRequests.join(', ')}` : 'no request body')
     + (allowedResponses.length > 0 ? ` and responses of ${allowedResponses.join(', ')}` : '');
   const allowedPlaces = {
     [PERSONAL_DATA]: personalDataPlaces,
@@ -788,7 +810,7 @@ function PiiPlacement(options) {
           if (isObject(body.node)) {
             forEachContentSchema(body.node, body.location, (schema, location) => {
               checkSchema(schema, location, `the request body of ${op.key}`,
-                (kind) => kind === PERSONAL_DATA && op.key === CREATE_BOOKING);
+                (kind) => kind === PERSONAL_DATA && allowedRequests.includes(op.key));
             });
           }
         }
@@ -819,13 +841,14 @@ function PiiPlacement(options) {
 
 // Every object schema in the request body of a public operation, nested ones
 // included, has `additionalProperties: false`. A nested `where` in a
-// configurable rule reaches only the top schema of the body.
+// configurable rule reaches only the top schema of the body. Webhooks of the
+// channels are the exception: their bodies are open, see WebhookShape.
 function PublicRequestClosed() {
   return {
     Paths(paths, ctx) {
       const report = createReporter(ctx);
       forEachOperation(ctx, paths, (op) => {
-        if (op.internal || op.operation.requestBody === undefined) {
+        if (op.internal || op.webhook || op.operation.requestBody === undefined) {
           return;
         }
         const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
@@ -839,6 +862,187 @@ function PublicRequestClosed() {
             }
           });
         });
+      });
+    },
+  };
+}
+
+// Webhooks of the channels. The operations under WEBHOOK_PATH and the
+// operations secured by channelApiKey are the same set, and each of them:
+// a) has a path of WEBHOOK_PATH_FORM, so the channel and the hotel are signed
+//    with the path, the channel is checked against its key, and no template
+//    after them brings an external booking id into the path;
+// b) has `security` of exactly one requirement, channelApiKey;
+// c) is a POST with a required body of application/json only;
+// d) has the header parameters X-Timestamp and X-Signature, required and with
+//    the exact patterns of SIGNATURE_HEADER_PATTERNS;
+// e) has no query parameters: a query string would carry unsigned data, and a
+//    webhook with one gets 401;
+// f) has an open body at any depth: no `additionalProperties` other than
+//    true and no `maxProperties`. A closed body would refuse a new field of
+//    the channel with 422, and a channel does not retry a 4xx.
+// Parameters come from two lists and through $ref, and the body is checked at
+// any depth, which a configurable rule cannot do.
+function WebhookShape() {
+  return {
+    Paths(paths, ctx) {
+      const report = createReporter(ctx);
+      forEachOperation(ctx, paths, (op) => {
+        const byKey = usesScheme(op.operation, CHANNEL_KEY_SCHEME);
+        if (!op.webhook && !byKey) {
+          return;
+        }
+        if (!WEBHOOK_PATH_FORM.test(op.path) || !byKey) {
+          report(`${op.key}: a webhook has a path ${WEBHOOK_PREFIX} and one kebab-case segment, and channelApiKey; channelApiKey is used only by webhooks`, op.location);
+        }
+        if (!isDeepStrictEqual(op.operation.security, [{ [CHANNEL_KEY_SCHEME]: [] }])) {
+          report(`${op.key}: security of a webhook must be exactly [{${CHANNEL_KEY_SCHEME}: []}]`, op.location.child(['security']));
+        }
+        if (!op.key.startsWith('POST ')) {
+          report(`${op.key}: a webhook is a POST`, op.location);
+        }
+        const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
+        if (!isObject(body.node) || body.node.required !== true) {
+          report(`${op.key}: a webhook has a required request body`, op.location);
+        }
+        const mediaTypes = isObject(body.node) && isObject(body.node.content) ? Object.keys(body.node.content) : [];
+        if (!sameMembers(mediaTypes, [JSON_MEDIA_TYPE])) {
+          report(`${op.key}: the request body of a webhook must have only ${JSON_MEDIA_TYPE}, found: ${mediaTypes.join(', ') || 'none'}`, op.location);
+        }
+        const headers = new Map();
+        forEachParameter(ctx, op, ({ parameter, location }) => {
+          if (parameter.in === 'header' && typeof parameter.name === 'string') {
+            headers.set(parameter.name.toLowerCase(), { parameter, location });
+          } else if (parameter.in === 'query') {
+            report(`${op.key}: a webhook has no query parameters: a query string would not be signed`, location);
+          }
+        });
+        for (const [name, pattern] of Object.entries(SIGNATURE_HEADER_PATTERNS)) {
+          const found = headers.get(name.toLowerCase());
+          if (found === undefined) {
+            report(`${op.key}: the header parameter ${name} of a webhook is missing`, op.location);
+            continue;
+          }
+          if (found.parameter.required !== true) {
+            report(`${op.key}: the header parameter ${name} of a webhook must have required: true`, found.location);
+          }
+          const schema = deref(ctx, found.parameter.schema, found.location.child(['schema']));
+          if (!isObject(schema.node) || schema.node.pattern !== pattern) {
+            report(`${op.key}: the schema of the header parameter ${name} must have exactly the pattern ${pattern}`, isObject(schema.node) ? schema.location : found.location);
+          }
+        }
+        if (isObject(body.node)) {
+          forEachContentSchema(body.node, body.location, (schema, location) => {
+            walkSchema(ctx, schema, location, (node, nodeLocation) => {
+              if ((node.additionalProperties !== undefined && node.additionalProperties !== true)
+                || node.maxProperties !== undefined) {
+                report('Object schema in the request body of a webhook must stay open, without additionalProperties other than true and without maxProperties: a channel does not retry a 4xx', nodeLocation);
+              }
+            });
+          });
+        }
+      });
+    },
+  };
+}
+
+const COMPOSITION_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
+
+// Collects the fields of `schema`, which lies at `location`, into
+// `result.found` as "name", "name.nested" or "name[].item": names of
+// properties joined with dots, [] after the name of an array, each with the
+// location of its first property. Follows $ref, allOf, anyOf and oneOf. Also
+// collects what makes a list of fields meaningless: `result.open` - an object
+// without properties, which would take any nested field under one name - and
+// `result.recursive` - a schema that contains itself, whose fields have no
+// end. `ancestry` holds the schemas on the way down to the current one.
+function collectFields(ctx, schema, location, prefix, result, ancestry = new Set()) {
+  const { node, location: nodeLocation } = deref(ctx, schema, location);
+  if (!isObject(node)) {
+    return;
+  }
+  const pointer = nodeLocation.absolutePointer;
+  if (ancestry.has(pointer)) {
+    result.recursive.push(nodeLocation.key());
+    return;
+  }
+  ancestry.add(pointer);
+  const composed = COMPOSITION_KEYWORDS.filter((keyword) => Array.isArray(node[keyword]));
+  for (const keyword of composed) {
+    node[keyword].forEach((item, index) => {
+      collectFields(ctx, item, nodeLocation.child([keyword, String(index)]), prefix, result, ancestry);
+    });
+  }
+  if (isObject(node.items)) {
+    collectFields(ctx, node.items, nodeLocation.child(['items']), `${prefix}[]`, result, ancestry);
+  }
+  const hasProperties = isObject(node.properties) && Object.keys(node.properties).length > 0;
+  if (typesOf(node).includes('object') && !hasProperties && composed.length === 0) {
+    result.open.push({ field: prefix, location: nodeLocation.key() });
+  }
+  if (hasProperties) {
+    for (const [name, property] of Object.entries(node.properties)) {
+      const field = prefix === '' ? name : `${prefix}.${name}`;
+      if (!result.found.has(field)) {
+        result.found.set(field, nodeLocation.child(['properties', name]).key());
+      }
+      collectFields(ctx, property, nodeLocation.child(['properties', name]), field, result, ancestry);
+    }
+  }
+  ancestry.delete(pointer);
+}
+
+// The body of every webhook has exactly the fields listed for its path in the
+// option `fields`: the allowed list. The bodies are open, and what the list
+// names is all that channel-sync stores and passes on; a new field, personal
+// data included, is a deliberate change of the list. The fields are collected
+// from the whole tree of the body, through $ref, allOf, anyOf and oneOf, so
+// none slips in through a nested schema, a branch or another component; a
+// configurable rule would see one component at a time. An object without
+// properties and a schema that contains itself are refused: either would put
+// any number of fields behind one line of the list. Only application/json
+// is checked: contracts/webhook-shape reports other media types, a missing
+// body and a path that is not of WEBHOOK_PATH_FORM.
+function WebhookFields(options) {
+  const { fields } = options;
+  if (!isObject(fields) || !Object.entries(fields).every(([path, list]) => WEBHOOK_PATH_FORM.test(path)
+    && Array.isArray(list) && list.every((field) => typeof field === 'string' && WEBHOOK_FIELD.test(field)))) {
+    throw new Error('contracts/webhook-fields: option fields must map webhook paths to lists of fields, such as guest.first_name or room_types[].rooms');
+  }
+  return {
+    Paths(paths, ctx) {
+      const report = createReporter(ctx);
+      forEachOperation(ctx, paths, (op) => {
+        if (!WEBHOOK_PATH_FORM.test(op.path)) {
+          return;
+        }
+        const expected = fields[op.path];
+        if (!Array.isArray(expected)) {
+          report(`${op.key}: a webhook must have the list of its fields in the option fields of contracts/webhook-fields`, op.location);
+          return;
+        }
+        const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
+        const media = isObject(body.node) && isObject(body.node.content) ? body.node.content[JSON_MEDIA_TYPE] : undefined;
+        if (!isObject(media) || media.schema === undefined) {
+          return;
+        }
+        const location = body.location.child(['content', JSON_MEDIA_TYPE, 'schema']);
+        const result = { found: new Map(), open: [], recursive: [] };
+        collectFields(ctx, media.schema, location, '', result);
+        for (const [field, at] of result.found) {
+          if (!expected.includes(field)) {
+            report(`${op.key}: field ${field} is not in the list of the webhook in contracts/webhook-fields; a new field is a deliberate change of the list`, at);
+          }
+        }
+        for (const field of expected.filter((item) => !result.found.has(item))) {
+          report(`${op.key}: field ${field} of the list in contracts/webhook-fields is missing from the body`, location);
+        }
+        for (const { field, location: at } of result.open) {
+          report(`${op.key}: ${field === '' ? 'the body' : `field ${field}`} is an object without properties: under one name of the list it would take any nested field`, at);
+        }
+        for (const at of result.recursive) {
+          report(`${op.key}: the body of a webhook contains a schema that contains itself: its list of fields would have no end`, at);
+        }
       });
     },
   };
@@ -1311,6 +1515,8 @@ module.exports = function contractsPlugin() {
         'retry-after-503-internal': RetryAfter503Internal,
         'pii-placement': PiiPlacement,
         'public-request-closed': PublicRequestClosed,
+        'webhook-shape': WebhookShape,
+        'webhook-fields': WebhookFields,
         'response-closed': ResponseClosed,
         'no-webhooks-callbacks': NoWebhooksCallbacks,
         'string-limit': StringLimit,

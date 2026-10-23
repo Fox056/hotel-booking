@@ -434,28 +434,14 @@ components:
       required: [first_name, last_name, email]
       properties:
         first_name:
-          $ref: '#/components/schemas/PersonName'
+          $ref: '../openapi/common.v1.yaml#/components/schemas/PersonName'
         last_name:
-          $ref: '#/components/schemas/PersonName'
+          $ref: '../openapi/common.v1.yaml#/components/schemas/PersonName'
         email:
-          description: Email for the receipts.
-          type: string
-          format: email
-          maxLength: 254
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Email'
         phone:
-          description: Phone in E.164 without spaces. Optional.
-          type: string
-          maxLength: 16
-          pattern: '^\+[1-9][0-9]{7,14}(?![\s\S])'
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Phone'
       additionalProperties: false
-    PersonName:
-      description: |
-        Letters, combining marks, space, hyphen, apostrophes ' and ’, and dot;
-        starts with a letter; no digits. This keeps a card number out of the
-        name, but not out of the email or the phone.
-      type: string
-      maxLength: 100
-      pattern: '^\p{L}(?:[\p{L}\p{M} .''’-]{0,98}[\p{L}\p{M}.])?(?![\s\S])'
     Consent:
       description: |
         Consent to the processing of personal data. The server records the time

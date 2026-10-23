@@ -1,0 +1,84 @@
+# channelApiKey secures an operation outside /v1/channels/: the key of a channel
+# opens only the webhooks of that channel. The operation is public, so it has
+# the public response set with 429. Its body is a JSON string, not an object: a
+# closed object would also break the open body of a webhook and hide whether the
+# key outside the webhook paths is caught, and an open object would fire
+# contracts/public-request-closed.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--webhook-shape--key-outside-channel-path
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/channel-bookings:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: receiveChannelBooking
+      summary: Receive a booking of a channel
+      security:
+        - channelApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/XTimestamp'
+        - $ref: '#/components/parameters/XSignature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExternalId'
+      responses:
+        '202':
+          description: Accepted.
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '../openapi/common.v1.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ValidationError'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    channelApiKey:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/channelApiKey'
+  parameters:
+    XTimestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 10
+        pattern: '^[0-9]{10}(?![\s\S])'
+    XSignature:
+      name: X-Signature
+      in: header
+      required: true
+      schema:
+        type: string
+        maxLength: 67
+        pattern: '^v1=[0-9a-f]{64}(?![\s\S])'
+  schemas:
+    ExternalId:
+      type: string
+      maxLength: 128

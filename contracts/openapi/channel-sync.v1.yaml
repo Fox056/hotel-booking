@@ -1,0 +1,437 @@
+openapi: 3.1.0
+info:
+  title: Channel sync API
+  version: 1.0.0
+  description: |
+    Public API of channel-sync for sales channels: webhooks with bookings and
+    cancellations. Only channels reach it: in production the router of a
+    channel admits only the addresses of that channel, and on the stand only
+    the channel stubs reach it, through their own entry point of the gateway.
+
+    A webhook carries the channel key in `Authorization: Bearer` and an HMAC
+    signature in `X-Timestamp` and `X-Signature`. The signed string is
+    `{method}\n{path}\n{timestamp}\n{body}`, and the channel signs every
+    delivery attempt anew.
+
+    channel-sync records a webhook and answers 202 at once; booking creates or
+    cancels the booking later. The channel has already sold the rooms, so a
+    booking is never refused for what it contains: whatever channel-sync
+    cannot process automatically waits for manual review. For its content a
+    request gets 4xx only when it cannot be identified: a malformed path, a
+    body that is not JSON, or no valid `external_id`. The channel does not
+    retry a 4xx.
+
+    `external_id` identifies a booking within the channel, across all its
+    hotels. Any query string, even an empty `?`, is 401: it would not be
+    signed.
+
+    Order of checks: the front (413, 414, 400, a repeated `Authorization` is
+    400), the route (404), the credentials (401), the channel and the hotel
+    (403), the limit of the channel (503), the body (415, 400, 422).
+
+    Signing, a test vector, duplicates and what is stored are described in
+    contracts/README.md, section «Каналы». Conventions are described in
+    contracts/README.md.
+servers:
+  - url: 'https://{host}'
+    description: Gateway. In production the router of a channel admits only the addresses of that channel.
+    variables:
+      host:
+        default: localhost
+        description: Gateway host of the environment.
+  - url: 'http://{host}'
+    description: Entry point of the gateway for the channel stubs on the stand. Its port is not published.
+    variables:
+      host:
+        default: gateway
+        description: Alias of the gateway in the network of the stubs, set in compose.
+tags:
+  - name: webhooks
+    description: Bookings and cancellations that channels send.
+paths:
+  /v1/channels/{channel_id}/hotels/{hotel_id}/bookings:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/ChannelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: receiveChannelBooking
+      summary: Receive a booking from a channel
+      description: |
+        Records the booking and answers 202 without a body. booking then
+        creates it confirmed, with the source `channel`; if rooms run short,
+        the booking gets the overbooking flag.
+
+        **Duplicates.** The key is the channel, `external_id` and the kind of
+        webhook, a booking here.
+        - The same key for the same hotel is a duplicate: 202, nothing
+          changes. The body is not compared: a booking cannot be modified, the
+          first version stays.
+        - The same key for another hotel breaks the rule that `external_id`
+          is unique within the channel: 202, and the booking waits for manual
+          review. Its retries are duplicates of that record.
+
+        **Fields.**
+        - `external_id` identifies the booking. Without it, or malformed, the
+          answer is 422: duplicates could not be told apart.
+        - `room_types`, `check_in_date` and `check_out_date` are what is
+          sold. A missing value or one outside its schema, an unmapped room
+          type code, more than one element of `room_types` or a repeated
+          code, dates out of order or nights beyond the sales horizon: 202,
+          and the booking waits for manual review. Check-in in the past is
+          accepted.
+        - `guests` and `guest` are data of the guest. A field outside its
+          schema is not stored, and the booking goes on as usual.
+
+        Unknown properties are ignored and not stored, at any depth. The front
+        accepts bodies up to 1 MiB.
+      tags: [webhooks]
+      security:
+        - channelApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Signature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelBooking'
+            example:
+              external_id: EXAMPLE1234567890
+              room_types:
+                - room_type_code: DBL-STD
+                  rooms: 1
+              check_in_date: '2026-11-10'
+              check_out_date: '2026-11-12'
+              guests: 2
+              guest:
+                first_name: Пример
+                last_name: Гостев
+                email: guest@example.com
+                phone: '+70000000000'
+      responses:
+        '202':
+          description: The booking is recorded, or it is a duplicate. No body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+  /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/ChannelId'
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: receiveChannelCancellation
+      summary: Receive a cancellation from a channel
+      description: |
+        Records the cancellation and answers 202 without a body. booking then
+        cancels the booking with the same channel, `external_id` and hotel
+        and releases its rooms. The answer does not tell whether such a
+        booking exists. A cancellation of another hotel's booking changes
+        nothing; a cancellation that comes before its booking is applied when
+        the booking appears.
+
+        The key of duplicates is the channel, `external_id` and the kind of
+        webhook, a cancellation here; a duplicate for the same hotel gets 202
+        and changes nothing. The same key for another hotel breaks the rule
+        that `external_id` is unique within the channel: 202, and the
+        cancellation waits for manual review, as a record of the key and the
+        hotel; its retries are duplicates of that record. Only `external_id`
+        is taken from the body, the rest is dropped on receipt.
+      tags: [webhooks]
+      security:
+        - channelApiKey: []
+      parameters:
+        - $ref: '#/components/parameters/Timestamp'
+        - $ref: '#/components/parameters/Signature'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChannelCancellation'
+            example:
+              external_id: EXAMPLE1234567890
+      responses:
+        '202':
+          description: The cancellation is recorded, or it is a duplicate. No body.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '413':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ContentTooLarge'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  securitySchemes:
+    channelApiKey:
+      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/channelApiKey'
+  parameters:
+    Timestamp:
+      name: X-Timestamp
+      in: header
+      required: true
+      description: |
+        Time of the signature: Unix time in seconds, exactly 10 digits. It
+        differs from the clock of channel-sync by at most 300 seconds either
+        way, so the channel signs every delivery attempt anew. A missing,
+        malformed or repeated header, or a time out of the window, is 401.
+      schema:
+        type: string
+        maxLength: 10
+        pattern: '^[0-9]{10}(?![\s\S])'
+      example: '1793869200'
+    Signature:
+      name: X-Signature
+      in: header
+      required: true
+      description: |
+        `v1=` and the HMAC-SHA256 of `{method}\n{path}\n{timestamp}\n{body}`
+        in lowercase hex. The path is the raw request target before `?`, the
+        body is the bytes as sent, and the key is the 32 bytes of the HMAC
+        secret of the channel, not its text. A missing, malformed, repeated
+        or wrong signature is 401.
+      schema:
+        type: string
+        maxLength: 67
+        pattern: '^v1=[0-9a-f]{64}(?![\s\S])'
+      example: v1=5b1a74132c1351020574f1b7ce371b1b5240f9965ec90f796a8ffe41c37ac684
+  headers:
+    RetryAfter:
+      required: false
+      description: |
+        Seconds to wait before a retry, at most 60. The 503 of channel-sync
+        always carries it; the plain-text 503 of the gateway does not.
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 60
+  responses:
+    Unauthorized:
+      description: |
+        The key, the time or the signature does not pass: the channel key is
+        missing, malformed or unknown; `X-Timestamp` is missing, malformed,
+        repeated or out of the window of 300 seconds; `X-Signature` is
+        missing, malformed, repeated or does not match. Any query string, even
+        an empty `?`, is 401 too. channel-sync checks the key, then the time,
+        then the signature, and records nothing. The channel does not retry.
+      headers:
+        WWW-Authenticate:
+          $ref: '../openapi/common.v1.yaml#/components/headers/WwwAuthenticate'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Unauthorized
+            status: 401
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    BadRequest:
+      description: |
+        The body is not JSON, or the front rejected the request, for example
+        because of a repeated `Authorization` header. The front answers before
+        channel-sync, so trace_id is present only if it had read traceparent.
+        The channel does not retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Bad Request
+            status: 400
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    Forbidden:
+      description: |
+        The channel in the path is not the channel of the key, or the hotel is
+        not connected to the channel or does not exist. The response does not
+        tell these cases apart. In production a request with another channel
+        in the path usually does not match the router of that channel and
+        gets the 404 of the gateway instead; it reaches channel-sync when the
+        addresses of two channels overlap. The channel does not retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Forbidden
+            status: 403
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    NotFound:
+      description: |
+        A malformed `channel_id` or `hotel_id`, or a `%` in the path: path
+        segments are checked before decoding, so that the route and the signed
+        path agree. A hotel that does not exist is 403, not 404. The gateway
+        itself answers 404, without trace_id, when the path has characters
+        that it does not route and, in production, when the request does not
+        match the router of a channel: another channel in the path or an
+        address outside the list of the channel. The channel does not retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank'
+          example:
+            type: about:blank
+            title: Not Found
+            status: 404
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    UnsupportedMediaType:
+      description: |
+        `Content-Type` is not `application/json`, its `charset` is not
+        `utf-8`, or the request has a `Content-Encoding` other than exactly
+        `identity`: the signature covers the bytes as they come, and a list
+        of codings, even `identity, gzip`, is 415 too. The type, the charset
+        and `identity` are compared case-insensitively, the charset may be
+        quoted, and other parameters are ignored, so
+        `application/json; charset=UTF-8` passes. The channel does not retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Unsupported Media Type
+            status: 415
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+    ValidationError:
+      description: |
+        The body is not a JSON object, or `external_id` is missing or
+        malformed: without it duplicates could not be told apart. Other
+        fields never cause 422. The channel does not retry.
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/validation_error'
+          example:
+            type: https://github.com/Fox056/hotel-booking/blob/main/contracts/README.md#validation_error
+            title: Validation error
+            status: 422
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+            errors:
+              - pointer: /external_id
+                code: required
+    ServiceUnavailable:
+      description: |
+        The webhook limit of the channel is exceeded, or channel-sync cannot
+        record the webhook now. channel-sync answers in Problem Details with
+        `Retry-After`; the gateway answers in plain text without it when
+        channel-sync is down. The channel retries, signing the request anew.
+      headers:
+        Retry-After:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/problem+json:
+          schema:
+            $ref: '../schemas/problem-details.v1.json#/$defs/about_blank_traced'
+          example:
+            type: about:blank
+            title: Service Unavailable
+            status: 503
+            trace_id: 4bf92f3577b34da6a3ce929d0e0e4736
+        text/plain:
+          schema:
+            $ref: '../openapi/common.v1.yaml#/components/schemas/PlainText'
+          example: Service Unavailable
+  schemas:
+    ChannelBooking:
+      description: |
+        A booking of a channel. The properties are the allowed list: only
+        they are stored and passed on to booking, and only values that pass
+        the schema of their own field. The object is open: unknown properties
+        are ignored and not stored.
+      type: object
+      required: [external_id, room_types, check_in_date, check_out_date]
+      properties:
+        external_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ExternalId'
+        room_types:
+          description: |
+            Room types with their numbers of rooms. A booking is processed
+            automatically with exactly one element; more elements or a
+            repeated code mean several room types, and the booking waits for
+            manual review.
+          type: array
+          minItems: 1
+          maxItems: 10
+          items:
+            $ref: '#/components/schemas/ChannelRoomType'
+        check_in_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckInDate'
+        check_out_date:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/CheckOutDate'
+        guests:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ChannelGuests'
+        guest:
+          $ref: '#/components/schemas/ChannelGuest'
+    ChannelRoomType:
+      description: A room type of the channel and the number of rooms of it.
+      type: object
+      required: [room_type_code, rooms]
+      properties:
+        room_type_code:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeCode'
+        rooms:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ChannelRooms'
+    ChannelGuest:
+      description: |
+        Personal data of the guest, all optional: the channel sends what it
+        has. A field outside its schema is not stored. No passport data and no
+        free text. None of it is ever returned.
+      type: object
+      properties:
+        first_name:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/PersonName'
+        last_name:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/PersonName'
+        email:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Email'
+        phone:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Phone'
+    ChannelCancellation:
+      description: |
+        A cancellation of a channel booking. Only `external_id` is taken; the
+        object is open, other properties are dropped on receipt.
+      type: object
+      required: [external_id]
+      properties:
+        external_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/ExternalId'
