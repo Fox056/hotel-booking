@@ -39,6 +39,18 @@ apis:
     root: openapi/inventory-internal.v1.yaml
   booking@v1:
     root: openapi/booking.v1.yaml
+  channel-sync@v1:
+    root: openapi/channel-sync.v1.yaml
+  channel-stub@v1:
+    root: openapi/channel-stub.v1.yaml
+    rules:
+      # The API of an external system that the channel stubs implement. It has
+      # neither our front nor our gateway, so the responses they add, their
+      # media types and the shape of our 401 do not apply; errors of the stub
+      # have no body. Every other rule applies.
+      rule/public-response-set: off
+      contracts/error-media-types: off
+      contracts/unauthorized-shape: off
   events@v1:
     root: asyncapi/events.v1.yaml
 
@@ -244,11 +256,13 @@ oas3_1Rules:
                 required: [serviceToken]
         unevaluatedProperties: true
 
-  # A scheme may also be a $ref to the scheme of the same name in
-  # common.v1.yaml: its shape is checked when common.v1.yaml is linted.
+  # hotelApiKey, bookingToken and channelApiKey may also be a $ref to the
+  # scheme of the same name in common.v1.yaml: its shape is checked when
+  # common.v1.yaml is linted. channelSyncKey, the key that a channel issued to
+  # channel-sync, is described in place, in the document of the channel stub.
   rule/security-scheme-shape:
     severity: error
-    message: 'Security schemes: hotelApiKey and bookingToken are http bearer, serviceToken is http bearer JWT and is the only scheme of its document, no other schemes. Details: {{problems}}'
+    message: 'Security schemes: hotelApiKey, bookingToken and channelApiKey are http bearer, channelSyncKey is http bearer described in place, serviceToken is http bearer JWT and is the only scheme of its document, no other schemes. Details: {{problems}}'
     subject:
       type: Components
       property: securitySchemes
@@ -256,7 +270,7 @@ oas3_1Rules:
       schema:
         type: object
         propertyNames:
-          enum: [hotelApiKey, bookingToken, serviceToken]
+          enum: [hotelApiKey, bookingToken, channelApiKey, channelSyncKey, serviceToken]
         dependentSchemas:
           serviceToken:
             maxProperties: 1
@@ -293,6 +307,30 @@ oas3_1Rules:
                 additionalProperties:
                   type: string
                   pattern: '^(?:\.\./)+openapi/common\.v1\.yaml#/components/securitySchemes/bookingToken$'
+          channelApiKey:
+            anyOf:
+              - type: object
+                required: [type, scheme]
+                properties:
+                  type: {const: http}
+                  scheme: {const: bearer}
+                  description: {type: string}
+                additionalProperties: false
+              - type: object
+                minProperties: 1
+                maxProperties: 1
+                propertyNames: {const: $ref}
+                additionalProperties:
+                  type: string
+                  pattern: '^(?:\.\./)+openapi/common\.v1\.yaml#/components/securitySchemes/channelApiKey$'
+          channelSyncKey:
+            type: object
+            required: [type, scheme]
+            properties:
+              type: {const: http}
+              scheme: {const: bearer}
+              description: {type: string}
+            additionalProperties: false
           serviceToken:
             type: object
             required: [type, scheme, bearerFormat]
@@ -334,6 +372,34 @@ oas3_1Rules:
         minProperties: 1
         propertyNames:
           pattern: '^/internal/v1/'
+
+  # channelSyncKey is the key that a channel issued to channel-sync. Only a
+  # document of an external system, marked x-implemented-by: fake-externals,
+  # describes it: on an API of the platform a bearer without our format would
+  # escape the search of secrets.
+  rule/channel-sync-key-stub-only:
+    severity: error
+    message: 'channelSyncKey may be described only in a document of an external system, with x-implemented-by: fake-externals at its root. Details: {{problems}}'
+    subject:
+      type: Root
+      property: x-implemented-by
+    where:
+      - subject:
+          type: Root
+          property: components
+        assertions:
+          defined: true
+          schema:
+            type: object
+            required: [securitySchemes]
+            properties:
+              securitySchemes:
+                type: object
+                required: [channelSyncKey]
+            unevaluatedProperties: true
+    assertions:
+      defined: true
+      const: fake-externals
 
   rule/secured-operation-401:
     severity: error
@@ -423,12 +489,14 @@ oas3_1Rules:
 
   # --- Responses ---
 
+  # Webhooks of the channels, the paths under /v1/channels/, have a set of
+  # their own: rule/webhook-response-set.
   rule/public-response-set:
     severity: error
     message: 'Public operation must have responses 400, 414, 429, 500, 502, 503 and 504, and 413 and 415 if it has a request body. Details: {{problems}}'
     subject:
       type: PathItem
-      matchParentKeys: '/^(?!\/internal\/)/'
+      matchParentKeys: '/^(?!\/internal\/|\/v1\/channels\/)/'
       property: *http-methods
     assertions:
       schema:
@@ -475,6 +543,30 @@ oas3_1Rules:
               type: object
               required: ['413', '415']
           unevaluatedProperties: true
+        unevaluatedProperties: true
+
+  # The gateway does not limit webhooks, and a channel does not retry a 4xx: a
+  # 429 would lose the booking. A webhook has ids in its path (404), a body
+  # (413, 415), credentials (401), access by channel and hotel (403) and a body
+  # it may fail to identify (422). Success is 202: the webhook is recorded and
+  # processed later.
+  rule/webhook-response-set:
+    severity: error
+    message: 'Webhook must have responses 202, 400, 401, 403, 404, 413, 414, 415, 422, 500, 502, 503 and 504, and no 429. Details: {{problems}}'
+    subject:
+      type: PathItem
+      matchParentKeys: '/^\/v1\/channels\//'
+      property: *http-methods
+    assertions:
+      schema:
+        type: object
+        required: [responses]
+        properties:
+          responses:
+            type: object
+            required: ['202', '400', '401', '403', '404', '413', '414', '415', '422', '500', '502', '503', '504']
+            not:
+              required: ['429']
         unevaluatedProperties: true
 
   contracts/error-media-types: error
@@ -674,7 +766,7 @@ oas3_1Rules:
   # `in` and `name` are checked together. Up to 20 parameters per list.
   rule/parameter-allowlist:
     severity: error
-    message: 'Parameter is not allowed: path - hotel_id, room_type_id, booking_id; query - from, to, check_in_date, check_out_date, rooms; header - Idempotency-Key; no cookie parameters. Details: {{problems}}'
+    message: 'Parameter is not allowed: path - hotel_id, room_type_id, booking_id, channel_id; query - from, to, check_in_date, check_out_date, rooms; header - Idempotency-Key, X-Timestamp, X-Signature; no cookie parameters. Details: {{problems}}'
     subject:
       type: ParameterList
       property: ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12', '13', '14', '15', '16', '17', '18', '19']
@@ -693,7 +785,7 @@ oas3_1Rules:
             then:
               properties:
                 name:
-                  enum: [hotel_id, room_type_id, booking_id]
+                  enum: [hotel_id, room_type_id, booking_id, channel_id]
               unevaluatedProperties: true
           - if:
               properties:
@@ -711,19 +803,39 @@ oas3_1Rules:
             then:
               properties:
                 name:
-                  enum: [Idempotency-Key]
+                  enum: [Idempotency-Key, X-Timestamp, X-Signature]
               unevaluatedProperties: true
         unevaluatedProperties: true
 
   contracts/pii-placement:
     severity: error
-    # Operations whose responses may contain personal data, as "METHOD path".
-    # None in v1.
+    # Operations whose request bodies may contain personal data, as "METHOD
+    # path": booking creation and the booking webhook of a channel.
+    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
+    # Operations whose responses may contain personal data. None in v1.
     allowedResponses: []
 
   # --- Closed bodies ---
 
   contracts/public-request-closed: error
+
+  # --- Webhooks of the channels ---
+
+  contracts/webhook-shape: error
+
+  # The allowed list of every webhook: the exact fields of its body, names of
+  # properties joined with dots, [] after the name of an array. The bodies are
+  # open, and channel-sync stores and passes on only these fields (PRD, П-15).
+  # contracts/pii-placement admits personal data in the body of the booking
+  # webhook, so this list is what keeps a passport or a free-text comment out.
+  # A new field is a deliberate change of the list.
+  contracts/webhook-fields:
+    severity: error
+    fields:
+      /v1/channels/{channel_id}/hotels/{hotel_id}/bookings: [external_id, room_types, 'room_types[].room_type_code',
+        'room_types[].rooms', check_in_date, check_out_date, guests, guest, guest.first_name, guest.last_name,
+        guest.email, guest.phone]
+      /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations: [external_id]
 
 async3Rules:
   # --- Events: the envelope, closed schemas, fields without personal data ---

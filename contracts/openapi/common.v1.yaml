@@ -26,6 +26,15 @@ components:
         Without the `Authorization` header the response is 401; any other value
         except the matching token is 404, as for a missing booking. The token is
         never sent in the URL.
+    channelApiKey:
+      type: http
+      scheme: bearer
+      description: |
+        Channel API key `ck_…` in `Authorization: Bearer`, for the webhooks of
+        the channel. A webhook also carries an HMAC signature in `X-Timestamp`
+        and `X-Signature`: a key without a valid signature is 401. The key
+        leads to the channel; the hotels it reaches are its connections in
+        channel-sync.
 
   parameters:
     HotelId:
@@ -49,6 +58,13 @@ components:
       description: Booking id.
       schema:
         $ref: '#/components/schemas/BookingId'
+    ChannelId:
+      name: channel_id
+      in: path
+      required: true
+      description: Channel id, a short code from the configuration.
+      schema:
+        $ref: '#/components/schemas/ChannelId'
 
   headers:
     WwwAuthenticate:
@@ -139,6 +155,64 @@ components:
       format: date-time
       maxLength: 20
       pattern: 'Z(?![\s\S])'
+    PersonName:
+      description: |
+        Letters, combining marks, space, hyphen, apostrophes ' and ’, and dot;
+        starts with a letter; no digits. This keeps a card number out of the
+        name, but not out of the email or the phone.
+      type: string
+      maxLength: 100
+      pattern: '^\p{L}(?:[\p{L}\p{M} .''’-]{0,98}[\p{L}\p{M}.])?(?![\s\S])'
+    Email:
+      description: Email of the guest. A direct booking needs it for the receipts.
+      type: string
+      format: email
+      maxLength: 254
+    Phone:
+      description: Phone of the guest in E.164 without spaces.
+      type: string
+      maxLength: 16
+      pattern: '^\+[1-9][0-9]{7,14}(?![\s\S])'
+    ChannelId:
+      description: |
+        Channel id: a short code from the configuration, such as `ota-alpha` —
+        lowercase letters, digits and hyphens, starting with a letter. Not a
+        UUID: channels are a closed set, and the code is also a label of
+        metrics.
+      type: string
+      maxLength: 32
+      pattern: '^[a-z][a-z0-9-]{0,31}(?![\s\S])'
+    ExternalId:
+      description: |
+        Booking id in the channel: 1 to 128 Latin letters, digits, `_` and
+        `-`, unique within the channel across all its hotels. An indirect
+        identifier of the guest: it is never in a path, a query string, an
+        event, a log or an alert.
+      type: string
+      maxLength: 128
+      pattern: '^[A-Za-z0-9_-]{1,128}(?![\s\S])'
+    RoomTypeCode:
+      description: |
+        Room type code of the channel. channel-sync maps it to a room type of
+        the hotel by its configuration.
+      type: string
+      maxLength: 64
+      pattern: '^[A-Za-z0-9_-]{1,64}(?![\s\S])'
+    ChannelRooms:
+      description: |
+        Number of rooms of one room type in a channel booking. Channel bookings
+        are not limited to 5 rooms. The channel sale of inventory takes the same
+        schema, so a booking within the webhook contract passes the sale.
+      type: integer
+      minimum: 1
+      maximum: 1000
+    ChannelGuests:
+      description: |
+        Number of guests of a channel booking: up to 20 guests, the largest
+        capacity of a room type, in each of up to 1000 rooms.
+      type: integer
+      minimum: 1
+      maximum: 20000
     PlainText:
       description: Plain-text body of a response that the gateway sends itself.
       type: string

@@ -1,0 +1,150 @@
+openapi: 3.1.0
+info:
+  title: Channel stub API
+  version: 1.0.0
+  description: |
+    API of a sales channel as the channel stubs implement it: channel-sync
+    sends the remaining rooms and the prices here. A real channel has its own
+    API, and channel-sync translates its model for every channel.
+
+    This document describes an external system, not a service of the
+    platform: the gateway does not publish it. The external system has
+    neither our front nor our gateway, so the rules of our API on their
+    responses do not apply here.
+
+    Conventions are described in contracts/README.md, section «Протокол
+    заглушек каналов».
+x-implemented-by: fake-externals
+servers:
+  - url: 'http://{host}'
+    description: A channel stub in the network of the stubs.
+    variables:
+      host:
+        default: channel-stub-a
+        description: Alias of the channel stub in the network of the stubs, set in compose.
+tags:
+  - name: availability
+    description: Remaining rooms and prices that the channel sells.
+paths:
+  /v1/hotels/{hotel_id}/availability:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    post:
+      operationId: updateAvailability
+      summary: Update remaining rooms and prices
+      description: |
+        Sets the remaining number of rooms and the nightly price for every
+        listed pair of a room type code and a date; other pairs do not
+        change. The values are absolute, so a retry is safe. A pair is listed
+        at most once. Without `price` the date has no price: the channel does
+        not sell it and does not keep the previous price.
+
+        The hotel is the id of the platform; the room type is the code of the
+        channel, by the mapping of channel-sync.
+
+        channel-sync waits at most 5 seconds and treats the answers so:
+        - 204 — the state of the channel is updated;
+        - 429 — wait for `Retry-After`, then retry;
+        - any 5xx or a timeout — retry with backoff, after `Retry-After` if a
+          503 carries it;
+        - any other 4xx and any 3xx — no retry: the message goes to the DLQ
+          with an alert. Redirects are never followed.
+
+        `Retry-After` is whole seconds; a value outside the contract counts as
+        absent. Error responses have no body, and channel-sync does not read
+        the bodies of responses.
+      tags: [availability]
+      security:
+        - channelSyncKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AvailabilityUpdate'
+            example:
+              values:
+                - room_type_code: DBL-STD
+                  date: '2026-11-10'
+                  remaining: 2
+                  price: 625000
+                - room_type_code: DBL-STD
+                  date: '2026-11-11'
+                  remaining: 0
+      responses:
+        '204':
+          description: Every listed pair is updated.
+        '400':
+          description: The body is not JSON.
+        '401':
+          description: The key of channel-sync is missing or wrong.
+          headers:
+            WWW-Authenticate:
+              $ref: '../openapi/common.v1.yaml#/components/headers/WwwAuthenticate'
+        '404':
+          description: The channel does not know the hotel.
+        '422':
+          description: The body breaks the schema, a pair is listed twice, or the channel does not know a room type code.
+        '429':
+          description: Rate limit of the channel. Retry after `Retry-After`.
+          headers:
+            Retry-After:
+              $ref: '../openapi/common.v1.yaml#/components/headers/RetryAfter'
+        '500':
+          description: Unexpected error of the channel.
+        '502':
+          description: A proxy of the channel could not reach it.
+        '503':
+          description: The channel cannot answer now.
+          headers:
+            Retry-After:
+              $ref: '#/components/headers/RetryAfterOptional'
+        '504':
+          description: A proxy of the channel did not get its answer in time.
+components:
+  securitySchemes:
+    channelSyncKey:
+      type: http
+      scheme: bearer
+      description: |
+        Key that the channel issued to channel-sync, in `Authorization:
+        Bearer`. A secret of its own: neither the channel key `ck_…` nor the
+        HMAC secret of the channel. Its format is the channel's; the keys of
+        the stubs come from the generation of secrets.
+  headers:
+    RetryAfterOptional:
+      required: false
+      description: Seconds to wait before a retry, when the channel knows it.
+      schema:
+        type: integer
+        minimum: 0
+        maximum: 86400
+  schemas:
+    AvailabilityUpdate:
+      type: object
+      required: [values]
+      properties:
+        values:
+          description: Pairs of a room type code and a date, each at most once.
+          type: array
+          minItems: 1
+          maxItems: 1000
+          items:
+            $ref: '#/components/schemas/AvailabilityValue'
+      additionalProperties: false
+    AvailabilityValue:
+      description: |
+        Remaining rooms and the price of a room type on a date. Without
+        `price` the date has no price, and the channel does not sell it.
+      type: object
+      required: [room_type_code, date, remaining]
+      properties:
+        room_type_code:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/RoomTypeCode'
+        date:
+          $ref: '../openapi/inventory.v1.yaml#/components/schemas/Date'
+        remaining:
+          $ref: '../openapi/inventory.v1.yaml#/components/schemas/RoomCount'
+        price:
+          $ref: '../openapi/inventory.v1.yaml#/components/schemas/Price'
+      additionalProperties: false
