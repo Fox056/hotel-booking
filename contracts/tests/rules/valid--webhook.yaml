@@ -5,7 +5,7 @@
 # every level, nested objects and array items included, and the body of the
 # booking carries personal data. Success is 202 without a body, and there is no
 # 429: the gateway does not limit webhooks. The body of each webhook has exactly
-# the fields of its list in contracts/webhook-fields, through nested schemas and
+# the fields of its list in contracts/request-fields, through nested schemas and
 # array items. The booking webhook takes the signature headers from the
 # parameters of its path, the cancellation webhook from those of its operation.
 # No rule may report anything here.

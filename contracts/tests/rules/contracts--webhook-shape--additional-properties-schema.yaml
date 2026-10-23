@@ -1,6 +1,9 @@
 # The body of the cancellation webhook admits extra properties only of one
 # type: additionalProperties is a schema, not true. A new field of the channel
-# of another type would fail the body, so it is closed in effect.
+# of another type would fail the body, so it is closed in effect. The schema
+# would also take a field under any name past the list of the webhook, so
+# contracts/request-fields fires too.
+# also-fires: contracts/request-fields
 openapi: 3.1.0
 info:
   title: Fixture contracts--webhook-shape--additional-properties-schema

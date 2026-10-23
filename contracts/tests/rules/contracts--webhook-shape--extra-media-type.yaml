@@ -1,4 +1,7 @@
-# The body of a webhook may also come as text/plain.
+# The body of a webhook may also come as text/plain. The cancellation webhook
+# has a list of fields, and a body with a list is application/json only, so
+# contracts/request-fields fires too.
+# also-fires: contracts/request-fields
 openapi: 3.1.0
 info:
   title: Fixture contracts--webhook-shape--extra-media-type

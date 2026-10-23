@@ -41,6 +41,9 @@
 const { isDeepStrictEqual } = require('node:util');
 
 const HTTP_METHODS = ['get', 'put', 'post', 'delete', 'options', 'head', 'patch', 'trace'];
+// An operation in the options of the rules: "METHOD path", a method of
+// HTTP_METHODS in uppercase. A misspelt method would match no operation.
+const OPERATION_KEY = new RegExp(`^(?:${HTTP_METHODS.join('|').toUpperCase()}) /\\S*$`);
 const INTERNAL_PATH = /^\/internal\//;
 // Webhooks of the channels: the paths under /v1/channels/. The configurable
 // rules select them by the same prefix. The path of a webhook is
@@ -58,9 +61,9 @@ const SIGNATURE_HEADER_PATTERNS = {
   'X-Signature': '^v1=[0-9a-f]{64}(?![\\s\\S])',
 };
 const JSON_MEDIA_TYPE = 'application/json';
-// A field of a webhook body in the option of contracts/webhook-fields:
+// A field of a request body in the option fields of contracts/request-fields:
 // snake_case names joined with dots, [] after the name of an array.
-const WEBHOOK_FIELD = /^[a-z][a-z0-9_]*(?:\[\])?(?:\.[a-z][a-z0-9_]*(?:\[\])?)*$/;
+const REQUEST_FIELD = /^[a-z][a-z0-9_]*(?:\[\])?(?:\.[a-z][a-z0-9_]*(?:\[\])?)*$/;
 const PROBLEM_JSON = 'application/problem+json';
 const TEXT_PLAIN = 'text/plain';
 
@@ -545,6 +548,10 @@ function sameMembers(actual, expected) {
   return actual.length === expected.length && expected.every((item) => actual.includes(item));
 }
 
+function isOperationList(list) {
+  return Array.isArray(list) && list.every((item) => typeof item === 'string' && OPERATION_KEY.test(item));
+}
+
 // The header must be present, be required and, if `checkSchema` is given,
 // have a schema that passes it.
 function checkRequiredHeader(ctx, report, response, location, name, checkSchema) {
@@ -766,22 +773,23 @@ function RetryAfter503Internal() {
   };
 }
 
-// Personal data appears only in the request bodies of the operations in
-// `allowedRequests` and in responses of the operations in `allowedResponses`;
-// the booking token only in the 201 response of booking creation. Neither
-// appears in parameters. Names are matched as described at PII_PARTS; schemas
-// are followed through every $ref.
+// Personal data appears in responses only of the operations in
+// `allowedResponses`, the booking token only in the 201 response of booking
+// creation, and neither appears in parameters. Request bodies are checked by
+// contracts/request-fields: it holds the operations whose bodies may carry
+// personal data. Names are matched as described at PII_PARTS; schemas are
+// followed through every $ref.
 function PiiPlacement(options) {
-  const { allowedRequests, allowedResponses } = options;
-  for (const [name, list] of Object.entries({ allowedRequests, allowedResponses })) {
-    if (!Array.isArray(list) || !list.every((item) => /^[A-Z]+ \/\S*$/.test(item))) {
-      throw new Error(`contracts/pii-placement: option ${name} must be a list of "METHOD path", empty if none`);
-    }
+  const { allowedResponses } = options;
+  if (options.allowedRequests !== undefined) {
+    throw new Error('contracts/pii-placement: option allowedRequests has moved to contracts/request-fields, the rule of request bodies');
   }
-  const personalDataPlaces = (allowedRequests.length > 0 ? `the request bodies of ${allowedRequests.join(', ')}` : 'no request body')
-    + (allowedResponses.length > 0 ? ` and responses of ${allowedResponses.join(', ')}` : '');
+  if (!isOperationList(allowedResponses)) {
+    throw new Error('contracts/pii-placement: option allowedResponses must be a list of "METHOD path", empty if none');
+  }
   const allowedPlaces = {
-    [PERSONAL_DATA]: personalDataPlaces,
+    [PERSONAL_DATA]: 'the request bodies that contracts/request-fields allows'
+      + (allowedResponses.length > 0 ? ` and responses of ${allowedResponses.join(', ')}` : ''),
     [BOOKING_TOKEN]: `the 201 response of ${CREATE_BOOKING}`,
   };
   return {
@@ -809,15 +817,6 @@ function PiiPlacement(options) {
             checkSchema(parameter.schema, location.child(['schema']), place, nothingAllowed);
           }
         });
-        if (op.operation.requestBody !== undefined) {
-          const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
-          if (isObject(body.node)) {
-            forEachContentSchema(body.node, body.location, (schema, location) => {
-              checkSchema(schema, location, `the request body of ${op.key}`,
-                (kind) => kind === PERSONAL_DATA && allowedRequests.includes(op.key));
-            });
-          }
-        }
         forEachResponse(ctx, op, ({ code, response, location }) => {
           const place = `response ${code} of ${op.key}`;
           const isAllowed = (kind) => (kind === PERSONAL_DATA
@@ -955,13 +954,22 @@ const COMPOSITION_KEYWORDS = ['allOf', 'anyOf', 'oneOf'];
 // Collects the fields of `schema`, which lies at `location`, into
 // `result.found` as "name", "name.nested" or "name[].item": names of
 // properties joined with dots, [] after the name of an array, each with the
-// location of its first property. Follows $ref, allOf, anyOf and oneOf. Also
-// collects what makes a list of fields meaningless: `result.open` - an object
-// without properties, which would take any nested field under one name - and
-// `result.recursive` - a schema that contains itself, whose fields have no
-// end. `ancestry` holds the schemas on the way down to the current one.
+// location of its first property. Follows $ref, allOf, anyOf, oneOf and
+// items. Also collects what makes a list of fields meaningless: into
+// `result.open`, each with its problem, an object without properties, which
+// would take any nested field under one name, additionalProperties with a
+// schema, which would take a field under any name, and the schema true, which
+// would take any value; into `result.recursive` a schema that contains
+// itself, whose fields have no end. `ancestry` holds the schemas on the way
+// down to the current one. additionalProperties true is not refused: in an
+// open body, of a webhook or of an internal operation, an unknown field is
+// ignored and not stored.
 function collectFields(ctx, schema, location, prefix, result, ancestry = new Set()) {
   const { node, location: nodeLocation } = deref(ctx, schema, location);
+  if (node === true) {
+    result.open.push({ field: prefix, location: nodeLocation.key(), problem: 'has the schema true: under one name of the list it would take any value' });
+    return;
+  }
   if (!isObject(node)) {
     return;
   }
@@ -977,12 +985,15 @@ function collectFields(ctx, schema, location, prefix, result, ancestry = new Set
       collectFields(ctx, item, nodeLocation.child([keyword, String(index)]), prefix, result, ancestry);
     });
   }
-  if (isObject(node.items)) {
+  if (isObject(node.items) || node.items === true) {
     collectFields(ctx, node.items, nodeLocation.child(['items']), `${prefix}[]`, result, ancestry);
   }
   const hasProperties = isObject(node.properties) && Object.keys(node.properties).length > 0;
   if (typesOf(node).includes('object') && !hasProperties && composed.length === 0) {
-    result.open.push({ field: prefix, location: nodeLocation.key() });
+    result.open.push({ field: prefix, location: nodeLocation.key(), problem: 'is an object without properties: under one name of the list it would take any nested field' });
+  }
+  if (isObject(node.additionalProperties)) {
+    result.open.push({ field: prefix, location: nodeLocation.child(['additionalProperties']).key(), problem: 'has additionalProperties with a schema: it would take a field under any name, past the list' });
   }
   if (hasProperties) {
     for (const [name, property] of Object.entries(node.properties)) {
@@ -996,56 +1007,96 @@ function collectFields(ctx, schema, location, prefix, result, ancestry = new Set
   ancestry.delete(pointer);
 }
 
-// The body of every webhook has exactly the fields listed for its path in the
-// option `fields`: the allowed list. The bodies are open, and what the list
-// names is all that channel-sync stores and passes on; a new field, personal
-// data included, is a deliberate change of the list. The fields are collected
-// from the whole tree of the body, through $ref, allOf, anyOf and oneOf, so
-// none slips in through a nested schema, a branch or another component; a
-// configurable rule would see one component at a time. An object without
-// properties and a schema that contains itself are refused: either would put
-// any number of fields behind one line of the list. Only application/json
-// is checked: contracts/webhook-shape reports other media types, a missing
-// body and a path that is not of WEBHOOK_PATH_FORM.
-function WebhookFields(options) {
-  const { fields } = options;
-  if (!isObject(fields) || !Object.entries(fields).every(([path, list]) => WEBHOOK_PATH_FORM.test(path)
-    && Array.isArray(list) && list.every((field) => typeof field === 'string' && WEBHOOK_FIELD.test(field)))) {
-    throw new Error('contracts/webhook-fields: option fields must map webhook paths to lists of fields, such as guest.first_name or room_types[].rooms');
+// Request bodies: where personal data may appear, and the exact fields of a
+// body. Both lists are options of this one rule: a rule of Redocly gets only
+// its own options, and every operation allowed to carry personal data must
+// have its list of fields.
+// - `allowedRequests`: the operations, "METHOD path", whose request bodies
+//   may carry personal data. A field of personal data in any other request
+//   body is reported, and so is the booking token in any request body. Names
+//   are matched as described at PII_PARTS, through every $ref.
+// - `fields`: the exact fields of the request body of an operation, names of
+//   properties joined with dots, [] after the name of an array. Every
+//   operation of `allowedRequests` has a list, or the options are refused:
+//   personal data goes only into a body of exact composition. Every webhook,
+//   a POST of WEBHOOK_PATH_FORM, has a list as well: its body is open, and
+//   what the list names is all that channel-sync stores and passes on.
+//   contracts/webhook-shape reports a webhook of another method or path.
+// The body of an operation with a list is application/json only, with a
+// schema. Its fields are collected from the whole tree of the schema, through
+// $ref, allOf, anyOf, oneOf and items, so none slips in through a nested
+// schema, a branch or another component; a configurable rule would see one
+// component at a time. An object without properties, additionalProperties
+// with a schema, the schema true and a schema that contains itself are
+// refused: each would let fields past the list.
+function RequestFields(options) {
+  const { allowedRequests, fields } = options;
+  if (!isOperationList(allowedRequests)) {
+    throw new Error('contracts/request-fields: option allowedRequests must be a list of "METHOD path", empty if none');
   }
+  if (!isObject(fields) || !Object.entries(fields).every(([key, list]) => OPERATION_KEY.test(key) && Array.isArray(list)
+    && list.every((field) => typeof field === 'string' && REQUEST_FIELD.test(field)) && new Set(list).size === list.length)) {
+    throw new Error('contracts/request-fields: option fields must map "METHOD path" to lists of distinct fields, such as guest.first_name or room_types[].rooms');
+  }
+  const unlisted = allowedRequests.filter((key) => !Object.hasOwn(fields, key));
+  if (unlisted.length > 0) {
+    throw new Error(`contracts/request-fields: every operation of allowedRequests must have its list in fields, as personal data goes only into a body of exact composition; no list: ${unlisted.join(', ')}`);
+  }
+  const personalDataBodies = allowedRequests.length > 0
+    ? `of the request bodies, only those of ${allowedRequests.join(', ')} may carry it`
+    : 'no request body may carry it';
   return {
     Paths(paths, ctx) {
       const report = createReporter(ctx);
       forEachOperation(ctx, paths, (op) => {
-        if (!WEBHOOK_PATH_FORM.test(op.path)) {
-          return;
-        }
-        const expected = fields[op.path];
-        if (!Array.isArray(expected)) {
-          report(`${op.key}: a webhook must have the list of its fields in the option fields of contracts/webhook-fields`, op.location);
-          return;
-        }
         const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
-        const media = isObject(body.node) && isObject(body.node.content) ? body.node.content[JSON_MEDIA_TYPE] : undefined;
-        if (!isObject(media) || media.schema === undefined) {
+        if (isObject(body.node)) {
+          forEachContentSchema(body.node, body.location, (schema, location) => {
+            forEachSensitiveProperty(ctx, schema, location, (name, kind, at) => {
+              if (kind === BOOKING_TOKEN) {
+                report(`Booking token field "${name}" is not allowed in the request body of ${op.key}; it may appear only in the 201 response of ${CREATE_BOOKING}`, at);
+              } else if (!allowedRequests.includes(op.key)) {
+                report(`Personal data field "${name}" is not allowed in the request body of ${op.key}; ${personalDataBodies}`, at);
+              }
+            });
+          });
+        }
+        if (!Object.hasOwn(fields, op.key)) {
+          if (op.key.startsWith('POST ') && WEBHOOK_PATH_FORM.test(op.path)) {
+            report(`${op.key}: a webhook must have the list of its fields in the option fields of contracts/request-fields`, op.location);
+          }
           return;
         }
-        const location = body.location.child(['content', JSON_MEDIA_TYPE, 'schema']);
+        const expected = fields[op.key];
+        const mediaTypes = isObject(body.node) && isObject(body.node.content) ? Object.keys(body.node.content) : [];
+        if (!sameMembers(mediaTypes, [JSON_MEDIA_TYPE])) {
+          report(`${op.key}: the request body of an operation with a list of fields must have only ${JSON_MEDIA_TYPE}, found: ${mediaTypes.join(', ') || 'none'}`, op.location);
+        }
+        const media = mediaTypes.includes(JSON_MEDIA_TYPE) ? body.node.content[JSON_MEDIA_TYPE] : undefined;
+        if (!isObject(media)) {
+          return;
+        }
+        const mediaLocation = body.location.child(['content', JSON_MEDIA_TYPE]);
+        if (media.schema === undefined) {
+          report(`${op.key}: the ${JSON_MEDIA_TYPE} body of an operation with a list of fields must have a schema: without one it takes any field`, mediaLocation.key());
+          return;
+        }
+        const location = mediaLocation.child(['schema']);
         const result = { found: new Map(), open: [], recursive: [] };
         collectFields(ctx, media.schema, location, '', result);
         for (const [field, at] of result.found) {
           if (!expected.includes(field)) {
-            report(`${op.key}: field ${field} is not in the list of the webhook in contracts/webhook-fields; a new field is a deliberate change of the list`, at);
+            report(`${op.key}: field ${field} is not in its list in contracts/request-fields; a new field is a deliberate change of the list`, at);
           }
         }
         for (const field of expected.filter((item) => !result.found.has(item))) {
-          report(`${op.key}: field ${field} of the list in contracts/webhook-fields is missing from the body`, location);
+          report(`${op.key}: field ${field} of its list in contracts/request-fields is missing from the body`, location);
         }
-        for (const { field, location: at } of result.open) {
-          report(`${op.key}: ${field === '' ? 'the body' : `field ${field}`} is an object without properties: under one name of the list it would take any nested field`, at);
+        for (const { field, location: at, problem } of result.open) {
+          report(`${op.key}: ${field === '' ? 'the body' : `field ${field}`} ${problem}`, at);
         }
         for (const at of result.recursive) {
-          report(`${op.key}: the body of a webhook contains a schema that contains itself: its list of fields would have no end`, at);
+          report(`${op.key}: the body contains a schema that contains itself: its list of fields would have no end`, at);
         }
       });
     },
@@ -1709,7 +1760,7 @@ module.exports = function contractsPlugin() {
         'pii-placement': PiiPlacement,
         'public-request-closed': PublicRequestClosed,
         'webhook-shape': WebhookShape,
-        'webhook-fields': WebhookFields,
+        'request-fields': RequestFields,
         'response-closed': ResponseClosed,
         'no-webhooks-callbacks': NoWebhooksCallbacks,
         'string-limit': StringLimit,

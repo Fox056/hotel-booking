@@ -1,7 +1,10 @@
-# Guest collects a field beyond first_name, last_name, email and phone.
+# The body of booking creation may also come as
+# application/x-www-form-urlencoded, with the same schema. The list of fields
+# describes a JSON tree, and a body with a list is application/json only: a
+# second media type would carry fields past the list.
 openapi: 3.1.0
 info:
-  title: Fixture rule--booking-request-fields--extra-field-in-guest
+  title: Fixture contracts--request-fields--booking-extra-media-type
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -19,6 +22,9 @@ paths:
         required: true
         content:
           application/json:
+            schema:
+              $ref: '#/components/schemas/BookingRequest'
+          application/x-www-form-urlencoded:
             schema:
               $ref: '#/components/schemas/BookingRequest'
       responses:
@@ -51,46 +57,7 @@ paths:
           $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
         '504':
           $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
-  /v1/bookings/{booking_id}:
-    parameters:
-      - $ref: '../openapi/common.v1.yaml#/components/parameters/BookingId'
-    get:
-      operationId: getBooking
-      summary: View a booking
-      security:
-        - bookingToken: []
-      responses:
-        '200':
-          description: Current state.
-          headers:
-            Cache-Control:
-              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/Booking'
-        '400':
-          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
-        '401':
-          $ref: '../openapi/common.v1.yaml#/components/responses/Unauthorized'
-        '404':
-          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
-        '414':
-          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
-        '429':
-          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
-        '500':
-          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
-        '502':
-          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
-        '503':
-          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
-        '504':
-          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
 components:
-  securitySchemes:
-    bookingToken:
-      $ref: '../openapi/common.v1.yaml#/components/securitySchemes/bookingToken'
   parameters:
     IdempotencyKey:
       name: Idempotency-Key
@@ -100,15 +67,6 @@ components:
         type: string
         format: uuid
   schemas:
-    BookingStatus:
-      type: string
-      enum: [pending_payment, confirmed, not_confirmed, cancelled]
-    NotConfirmedReason:
-      type: string
-      enum: [payment_declined, payment_outcome_unknown, hold_not_confirmed, force_closed]
-    RefundStatus:
-      type: string
-      enum: [none, in_progress, completed, failed]
     BookingRequest:
       type: object
       required: [room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount]
@@ -138,6 +96,9 @@ components:
             accepted:
               type: boolean
               enum: [true]
+            text_version:
+              type: string
+              maxLength: 32
           additionalProperties: false
         card_token:
           type: string
@@ -164,9 +125,6 @@ components:
         phone:
           type: string
           maxLength: 16
-        passport_number:
-          type: string
-          maxLength: 20
       additionalProperties: false
     CreatedBooking:
       type: object
@@ -177,17 +135,4 @@ components:
         booking_token:
           type: string
           maxLength: 46
-      additionalProperties: false
-    Booking:
-      type: object
-      required: [booking_id, status, refund_status]
-      properties:
-        booking_id:
-          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
-        status:
-          $ref: '#/components/schemas/BookingStatus'
-        not_confirmed_reason:
-          $ref: '#/components/schemas/NotConfirmedReason'
-        refund_status:
-          $ref: '#/components/schemas/RefundStatus'
       additionalProperties: false

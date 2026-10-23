@@ -618,7 +618,7 @@ oas3_1Rules:
               additionalProperties: false
         unevaluatedProperties: true
 
-  # --- Booking document: enumerations and the body with personal data ---
+  # --- Booking document: enumerations ---
   # These rules apply to the document of bookings, the one with paths under
   # /v1/bookings/, and require the schemas inline in its components/schemas.
   # The subject is the root, so a document without components/schemas fails
@@ -722,49 +722,6 @@ oas3_1Rules:
             unevaluatedProperties: true
         unevaluatedProperties: true
 
-  # The body with personal data has only the fields that booking needs (PRD,
-  # П-15). A new field in it is a deliberate change of this rule.
-  rule/booking-request-fields:
-    severity: error
-    message: 'components/schemas/BookingRequest must have exactly the properties room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount, and Guest exactly first_name, last_name, email, phone. Details: {{problems}}'
-    subject:
-      type: Root
-      property: components
-    where:
-      - *booking-document
-    assertions:
-      defined: true
-      schema:
-        type: object
-        required: [schemas]
-        properties:
-          schemas:
-            type: object
-            required: [BookingRequest, Guest]
-            properties:
-              BookingRequest:
-                type: object
-                required: [properties]
-                properties:
-                  properties:
-                    type: object
-                    required: &booking-request-fields [room_type_id, check_in_date, check_out_date, rooms, guests, guest, consent, card_token, expected_amount]
-                    propertyNames:
-                      enum: *booking-request-fields
-                unevaluatedProperties: true
-              Guest:
-                type: object
-                required: [properties]
-                properties:
-                  properties:
-                    type: object
-                    required: &guest-fields [first_name, last_name, email, phone]
-                    propertyNames:
-                      enum: *guest-fields
-                unevaluatedProperties: true
-            unevaluatedProperties: true
-        unevaluatedProperties: true
-
   # --- Parameters ---
 
   # The list is addressed by index: then a $ref parameter is resolved and its
@@ -812,35 +769,46 @@ oas3_1Rules:
               unevaluatedProperties: true
         unevaluatedProperties: true
 
+  # Personal data and the booking token in parameters and responses. Request
+  # bodies are checked by contracts/request-fields.
   contracts/pii-placement:
     severity: error
-    # Operations whose request bodies may contain personal data, as "METHOD
-    # path": booking creation and the booking webhook of a channel.
-    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
-    # Operations whose responses may contain personal data. None in v1.
+    # Operations whose responses may contain personal data, as "METHOD path".
+    # None in v1.
     allowedResponses: []
 
   # --- Closed bodies ---
 
   contracts/public-request-closed: error
 
+  # --- Request bodies: personal data and exact fields ---
+
+  # Both lists are options of one rule: a rule sees only its own options, and
+  # every operation of allowedRequests must have its list in fields, so
+  # personal data goes only into a body of exact composition. A list holds the
+  # exact fields of a body, names of properties joined with dots, [] after the
+  # name of an array: only what booking and channel-sync need (PRD, П-15). The
+  # lists of booking creation and of the booking webhook keep a passport or a
+  # free-text comment out of the bodies with personal data. Every webhook has a
+  # list too: its body is open, and channel-sync stores and passes on only
+  # these fields. A new field is a deliberate change of a list.
+  contracts/request-fields:
+    severity: error
+    # Operations whose request bodies may contain personal data, as "METHOD
+    # path": booking creation and the booking webhook of a channel.
+    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
+    fields:
+      'POST /v1/hotels/{hotel_id}/bookings': [room_type_id, check_in_date, check_out_date, rooms, guests, guest,
+        guest.first_name, guest.last_name, guest.email, guest.phone, consent, consent.accepted, consent.text_version,
+        card_token, expected_amount]
+      'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings': [external_id, room_types,
+        'room_types[].room_type_code', 'room_types[].rooms', check_in_date, check_out_date, guests, guest,
+        guest.first_name, guest.last_name, guest.email, guest.phone]
+      'POST /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations': [external_id]
+
   # --- Webhooks of the channels ---
 
   contracts/webhook-shape: error
-
-  # The allowed list of every webhook: the exact fields of its body, names of
-  # properties joined with dots, [] after the name of an array. The bodies are
-  # open, and channel-sync stores and passes on only these fields (PRD, П-15).
-  # contracts/pii-placement admits personal data in the body of the booking
-  # webhook, so this list is what keeps a passport or a free-text comment out.
-  # A new field is a deliberate change of the list.
-  contracts/webhook-fields:
-    severity: error
-    fields:
-      /v1/channels/{channel_id}/hotels/{hotel_id}/bookings: [external_id, room_types, 'room_types[].room_type_code',
-        'room_types[].rooms', check_in_date, check_out_date, guests, guest, guest.first_name, guest.last_name,
-        guest.email, guest.phone]
-      /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations: [external_id]
 
 async3Rules:
   # --- Events: the envelope, closed schemas, fields without personal data ---

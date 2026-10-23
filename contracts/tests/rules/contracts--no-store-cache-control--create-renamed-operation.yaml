@@ -63,6 +63,22 @@ components:
       type: object
       required: [guest, card_token]
       properties:
+        room_type_id:
+          $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
+        check_in_date:
+          type: string
+          format: date
+        check_out_date:
+          type: string
+          format: date
+        rooms:
+          type: integer
+          minimum: 1
+          maximum: 5
+        guests:
+          type: integer
+          minimum: 1
+          maximum: 50
         guest:
           type: object
           required: [first_name, email]
@@ -70,14 +86,35 @@ components:
             first_name:
               type: string
               maxLength: 100
+            last_name:
+              type: string
+              maxLength: 100
             email:
               type: string
               format: email
               maxLength: 254
+            phone:
+              type: string
+              maxLength: 16
+          additionalProperties: false
+        consent:
+          type: object
+          required: [accepted]
+          properties:
+            accepted:
+              type: boolean
+              enum: [true]
+            text_version:
+              type: string
+              maxLength: 32
           additionalProperties: false
         card_token:
           type: string
           maxLength: 132
+        expected_amount:
+          type: integer
+          minimum: 1
+          maximum: 15000000000
       additionalProperties: false
     CreatedBooking:
       type: object

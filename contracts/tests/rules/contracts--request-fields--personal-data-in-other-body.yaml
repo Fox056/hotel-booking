@@ -1,7 +1,9 @@
-# A personal data field in the request body of an operation other than booking creation.
+# A personal data field, phone, in the request body of an operation that is not
+# in allowedRequests. The operation has no list of fields, so only the check of
+# personal data names catches it.
 openapi: 3.1.0
 info:
-  title: Fixture contracts--pii-placement--field-in-other-request-body
+  title: Fixture contracts--request-fields--personal-data-in-other-body
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test

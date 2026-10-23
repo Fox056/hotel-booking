@@ -142,6 +142,9 @@ components:
             accepted:
               type: boolean
               enum: [true]
+            text_version:
+              type: string
+              maxLength: 32
           additionalProperties: false
         card_token:
           type: string
