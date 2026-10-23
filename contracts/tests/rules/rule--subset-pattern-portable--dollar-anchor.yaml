@@ -1,4 +1,7 @@
 # A pattern ends with $, which also matches before a final line break in PCRE.
+# The pattern has no end anchor (?![\s\S]), so contracts/pattern-anchored fires
+# too.
+# also-fires: contracts/pattern-anchored
 openapi: 3.1.0
 info:
   title: Fixture rule--subset-pattern-portable--dollar-anchor

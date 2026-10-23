@@ -1,0 +1,57 @@
+# A field of a response body takes the schema of the CacheControlNoStore
+# header through $ref. The same schema also serves the Cache-Control header
+# of the response, which comes first, yet the exception follows the use of a
+# schema, not the place where it lies: in the body the pattern holds neither
+# end of the value, so any text with no-store in it passes.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--pattern-anchored--no-store-by-ref-from-body
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability
+      security: []
+      responses:
+        '200':
+          description: Offers.
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  schemas:
+    Result:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        directives:
+          $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore/schema'
+      additionalProperties: false

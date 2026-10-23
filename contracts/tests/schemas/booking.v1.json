@@ -496,6 +496,31 @@
         "remote_ip": {"type": "string", "format": "uuid"}
       },
       "additionalProperties": false
+    },
+    "MessageWithUnanchoredPattern": {
+      "description": "contracts--pattern-anchored--event-pattern-without-end: the message with StateWithUnanchoredPattern as its payload.",
+      "type": "object",
+      "required": ["message_id", "type", "created_at", "version", "payload"],
+      "properties": {
+        "message_id": {"$ref": "../schemas/envelope.v1.json#/$defs/MessageId"},
+        "type": {"type": "string", "enum": ["booking.state.v1"]},
+        "created_at": {"$ref": "../schemas/envelope.v1.json#/$defs/CreatedAt"},
+        "headers": {"$ref": "../schemas/envelope.v1.json#/$defs/EventHeaders"},
+        "version": {"$ref": "../schemas/envelope.v1.json#/$defs/KeyVersion"},
+        "payload": {"$ref": "#/$defs/StateWithUnanchoredPattern"}
+      },
+      "additionalProperties": false
+    },
+    "StateWithUnanchoredPattern": {
+      "description": "contracts--pattern-anchored--event-pattern-without-end: booking_id is described in place, and its pattern has no end anchor.",
+      "type": "object",
+      "required": ["hotel_id", "booking_id", "status"],
+      "properties": {
+        "hotel_id": {"$ref": "#/$defs/Id"},
+        "booking_id": {"type": "string", "format": "uuid", "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}"},
+        "status": {"type": "string", "enum": ["pending_payment", "confirmed", "not_confirmed", "cancelled"]}
+      },
+      "additionalProperties": false
     }
   }
 }

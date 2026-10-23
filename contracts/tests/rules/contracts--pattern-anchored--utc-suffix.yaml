@@ -1,0 +1,55 @@
+# A moment, format date-time, with only the suffix Z(?![\s\S]) as its pattern.
+# With it the format check of league lets through 2026-01-01 00:00:00Z and
+# 2026-1-1T0:00:00NZ, a moment in the zone of New Zealand.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--pattern-anchored--utc-suffix
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability
+      security: []
+      responses:
+        '200':
+          description: Offers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  schemas:
+    Result:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        updated_at:
+          type: string
+          format: date-time
+          maxLength: 20
+          pattern: 'Z(?![\s\S])'
+      additionalProperties: false

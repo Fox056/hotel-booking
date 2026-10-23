@@ -17,7 +17,9 @@
  * - a nested `where` visitor reaches only the first schema under a request
  *   body or a response, not the nested ones;
  * - assertions see a node after `$ref` resolution, so the raw `$ref` string and
- *   the keys next to `$ref` are visible only to a `ref` visitor.
+ *   the keys next to `$ref` are visible only to a `ref` visitor;
+ * - an assertion can match a value against a regular expression but cannot
+ *   read it: it can neither compile a pattern nor find its groups and classes.
  *
  * The rules that walk operations start from the `Paths` node and resolve every
  * reference themselves: the walker visits a shared node once per document,
@@ -68,6 +70,9 @@ const BOOKING_TOKEN_SCHEME = 'bookingToken';
 
 // The pattern of CacheControlNoStore in openapi/common.v1.yaml.
 const NO_STORE_PATTERN = '(?:^|,)[ \\t]*no-store[ \\t]*(?:,|(?![\\s\\S]))';
+// The end of the string in a pattern. `$` would also match before a final
+// line break: league builds a pattern as #...#u, without the modifier D.
+const PATTERN_END = '(?![\\s\\S])';
 
 // Property, parameter and header names are compared after normalizeName():
 // lowercase, without separators. Personal data is a name that contains one of
@@ -112,7 +117,6 @@ const ENVELOPE_REFS = {
 // one more segment, a UUID or a date, separated by colons.
 const KEY_UUID = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}';
 const KEY_DATE = '[0-9]{4}-[0-9]{2}-[0-9]{2}';
-const KEY_END = '(?![\\s\\S])';
 // A string of an event payload is closed: an enum or one of these formats.
 // Free text could carry personal data under any allowed name. A date-time also
 // has a short maxLength, or its fraction of a second could hold any digits.
@@ -234,7 +238,7 @@ function isEventKeyPattern(pattern) {
     rest = rest.slice(segment.length + 1);
     segments += 1;
   }
-  return segments >= 2 && rest === KEY_END;
+  return segments >= 2 && rest === PATTERN_END;
 }
 
 // Follows a chain of `$ref` from `node`, which lies at `location`. Returns the
@@ -1146,6 +1150,195 @@ function SubsetClosedObject() {
   };
 }
 
+// What keeps `pattern` from holding the whole string, or undefined if it holds
+// it. JSON Schema finds a pattern anywhere in the value: without ^ any head
+// passes, without the end any tail - an external id a/../x by its tail x, a
+// timestamp of 13 digits by its first ten. Redocly reads a pattern as ECMA-262
+// with flag u and league as PCRE, and both must see the same anchors. So the
+// pattern:
+// 1) compiles as ECMA-262 with flag u. A construct of PCRE alone could end a
+//    match of league early: after (*ACCEPT) any tail passes;
+// 2) starts with ^;
+// 3) ends with a group at the top level that is exactly PATTERN_END. The text
+//    at the end is not enough: in ^(a\(?![\s\S]) its ( is escaped, in
+//    ^(a[(?![\s\S]) it lies in a class, and the last ) closes group 1;
+// 4) has no | outside groups and classes: an alternative at the top level
+//    holds one end of the string only;
+// 5) has neither [] nor [^], nor [: [. [= inside a class. A class of ECMA-262
+//    ends at the first ], while PCRE takes a ] right after [ or [^ as a literal
+//    and [:alpha:] inside a class as a POSIX class, and reads on, up to the ]
+//    of the end of the string.
+// The pattern is read by the rules of ECMA-262 with flag u: a backslash
+// escapes the next character, a class ends at the first unescaped ], and [
+// inside a class is a literal. Given 1) and 5), PCRE either finds the same
+// groups and classes or does not compile the pattern, as with [:a-z:], a POSIX
+// class outside a class for PCRE, and then league rejects every value.
+function patternProblem(pattern) {
+  try {
+    new RegExp(pattern, 'u');
+  } catch (error) {
+    return `it does not compile as ECMA-262 with flag u, the way Redocly compiles it: ${error.message}`;
+  }
+  let depth = 0;
+  let inClass = false;
+  let groupStart = -1;
+  let lastGroup;
+  let alternative = false;
+  let emptyClass = false;
+  let posixClass = false;
+  for (let i = 0; i < pattern.length; i += 1) {
+    const c = pattern[i];
+    if (c === '\\') {
+      i += 1;
+    } else if (inClass) {
+      if (c === ']') {
+        inClass = false;
+      } else if (c === '[' && [':', '.', '='].includes(pattern[i + 1])) {
+        posixClass = true;
+      }
+    } else if (c === '[') {
+      inClass = true;
+      if (pattern[i + 1] === ']' || (pattern[i + 1] === '^' && pattern[i + 2] === ']')) {
+        emptyClass = true;
+      }
+    } else if (c === '(') {
+      if (depth === 0) {
+        groupStart = i;
+      }
+      depth += 1;
+    } else if (c === ')') {
+      depth -= 1;
+      if (depth === 0) {
+        lastGroup = { start: groupStart, end: i };
+      }
+    } else if (c === '|' && depth === 0) {
+      alternative = true;
+    }
+  }
+  const problems = [];
+  if (!pattern.startsWith('^')) {
+    problems.push('it does not start with ^');
+  }
+  if (lastGroup === undefined || lastGroup.end !== pattern.length - 1
+    || pattern.slice(lastGroup.start) !== PATTERN_END) {
+    problems.push(`it does not end with the group ${PATTERN_END} at the top level`);
+  }
+  if (alternative) {
+    problems.push('it has | outside groups and classes');
+  }
+  if (emptyClass) {
+    problems.push('it has [] or [^], which PCRE reads on past the ]');
+  }
+  if (posixClass) {
+    problems.push('it has [: [. or [= inside a class, a POSIX class for PCRE');
+  }
+  return problems.length > 0 ? problems.join('; ') : undefined;
+}
+
+// Reports the pattern of `schema` if it does not hold the whole string, see
+// patternProblem(). NO_STORE_PATTERN is left to the caller if `noStoreByUse`.
+function checkPattern(schema, ctx, noStoreByUse) {
+  const { pattern } = schema;
+  if (typeof pattern !== 'string' || (noStoreByUse && pattern === NO_STORE_PATTERN)) {
+    return;
+  }
+  const problem = pattern === NO_STORE_PATTERN
+    ? 'it is the pattern of CacheControlNoStore, which may stand only in a schema written in the object of a Cache-Control response header'
+    : patternProblem(pattern);
+  if (problem !== undefined) {
+    ctx.report({
+      message: `Pattern must hold the whole string, the same in ECMA-262 and in PCRE: ${problem}`,
+      location: ctx.location.child(['pattern']),
+    });
+  }
+}
+
+// The place of a schema written in a header object itself: a header of a
+// response or of components/headers.
+const HEADER_SCHEMA_POINTER = /(?:^#\/components|\/responses\/[^/]+)\/headers\/[^/]+\/schema$/;
+
+// Every pattern holds the whole string, see patternProblem(). The one
+// exception is NO_STORE_PATTERN in the schema of a Cache-Control response
+// header: it looks for the no-store directive anywhere in a list of
+// directives, and contracts/no-store-cache-control requires exactly it there.
+// Whether the exception holds depends on how a schema is used, while through
+// $ref one schema may serve a header and a body, and the walker visits it
+// once. So the rule decides in two steps:
+// - the Schema visitor reports NO_STORE_PATTERN anywhere but in a schema
+//   written in a header object itself, at HEADER_SCHEMA_POINTER;
+// - the Paths visitor follows every use of a schema in the operations -
+//   parameters, request bodies, response bodies and headers, with their
+//   content - through $ref, and reports a schema of a header with the pattern
+//   used anywhere but as the schema itself of a Cache-Control response header.
+// The headers of `encoding` in multipart bodies are not followed: a schema
+// written in one of them is reported by the Schema visitor, but one taken from
+// a header through $ref would pass.
+function PatternAnchored() {
+  return {
+    Schema(schema, ctx) {
+      checkPattern(schema, ctx, HEADER_SCHEMA_POINTER.test(ctx.location.pointer));
+    },
+    Paths(paths, ctx) {
+      const report = createReporter(ctx);
+      // Reports the schemas of headers with NO_STORE_PATTERN in `schema` and
+      // every schema in it, except `allowed`.
+      const refuse = (schema, location, place, allowed) => {
+        walkSchema(ctx, schema, location, (node, nodeLocation) => {
+          if (node.pattern === NO_STORE_PATTERN && node !== allowed && HEADER_SCHEMA_POINTER.test(nodeLocation.pointer)) {
+            report(`The pattern of CacheControlNoStore may appear only in the schema of a Cache-Control response header, not in ${place}: elsewhere it holds neither end of the value`, nodeLocation.child(['pattern']));
+          }
+        });
+      };
+      // The schema of a parameter or a header and the schemas of its content.
+      const refuseIn = (owner, location, place, allowed) => {
+        if (owner.schema !== undefined) {
+          refuse(owner.schema, location.child(['schema']), place, allowed);
+        }
+        forEachContentSchema(owner, location, (schema, schemaLocation) => refuse(schema, schemaLocation, place));
+      };
+      forEachOperation(ctx, paths, (op) => {
+        forEachParameter(ctx, op, ({ parameter, location }) => {
+          refuseIn(parameter, location, `parameter ${parameter.name} of ${op.key}`);
+        });
+        if (op.operation.requestBody !== undefined) {
+          const body = deref(ctx, op.operation.requestBody, op.location.child(['requestBody']));
+          if (isObject(body.node)) {
+            forEachContentSchema(body.node, body.location, (schema, location) => {
+              refuse(schema, location, `the request body of ${op.key}`);
+            });
+          }
+        }
+        forEachResponse(ctx, op, ({ code, response, location }) => {
+          const place = `response ${code} of ${op.key}`;
+          forEachContentSchema(response, location, (schema, schemaLocation) => {
+            refuse(schema, schemaLocation, `the body of ${place}`);
+          });
+          const headers = isObject(response.headers) ? response.headers : {};
+          for (const [name, rawHeader] of Object.entries(headers)) {
+            const header = deref(ctx, rawHeader, location.child(['headers', name]));
+            if (!isObject(header.node)) {
+              continue;
+            }
+            const allowed = name.toLowerCase() === 'cache-control' && header.node.schema !== undefined
+              ? deref(ctx, header.node.schema, header.location.child(['schema'])).node
+              : undefined;
+            refuseIn(header.node, header.location, `header ${name} of ${place}`, allowed);
+          }
+        });
+      });
+    },
+  };
+}
+
+// AsyncAPI documents have no HTTP headers, so the exception does not apply.
+function PatternAnchoredAsync() {
+  return {
+    Schema(schema, ctx) {
+      checkPattern(schema, ctx, false);
+    },
+  };
+}
+
 // The form of $ref for the response validator: an external one starts with
 // ../ and has no ./ or .. after that; a local one in a YAML document points
 // into #/components/ if `localInComponents`; $defs are referenced only in
@@ -1314,7 +1507,7 @@ function EventEnvelope() {
           } else {
             const key = deref(ctx, messageBinding.node.key, messageBinding.location.child(['key']));
             if (!isObject(key.node) || !typesOf(key.node).includes('string') || !isEventKeyPattern(key.node.pattern)) {
-              report(`Record key must be a string whose pattern holds only ids and dates: ^${KEY_UUID}, the hotel, then segments :${KEY_UUID} or :${KEY_DATE}, then ${KEY_END}`, key.location.key());
+              report(`Record key must be a string whose pattern holds only ids and dates: ^${KEY_UUID}, the hotel, then segments :${KEY_UUID} or :${KEY_DATE}, then ${PATTERN_END}`, key.location.key());
             }
           }
 
@@ -1521,12 +1714,14 @@ module.exports = function contractsPlugin() {
         'no-webhooks-callbacks': NoWebhooksCallbacks,
         'string-limit': StringLimit,
         'subset-closed-object': SubsetClosedObject,
+        'pattern-anchored': PatternAnchored,
         'ref-form': RefForm,
         'ref-siblings': RefSiblings,
       },
       async3: {
         'string-limit': StringLimit,
         'subset-closed-object': SubsetClosedObject,
+        'pattern-anchored': PatternAnchoredAsync,
         'ref-form': RefFormAsync,
         'ref-siblings': RefSiblings,
         'event-fields': EventFields,

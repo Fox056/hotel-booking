@@ -177,6 +177,11 @@ rules:
     assertions:
       notPattern: '/(?:^|[^\\])(?:\\\\)*(?:\$|\\[dDwW])/'
 
+  # Every pattern holds the whole string, the same in ECMA-262 and in PCRE; the
+  # one exception is the pattern of CacheControlNoStore in the schema of a
+  # Cache-Control response header. The plugin lists the conditions.
+  contracts/pattern-anchored: error
+
   contracts/ref-form: error
   contracts/ref-siblings: error
 
