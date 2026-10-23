@@ -1,0 +1,11 @@
+# fields is a list of the fields of one body instead of a map from operations to their lists.
+# expect: option fields must map
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/request-fields:
+    severity: error
+    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
+    fields: [room_type_id, check_in_date, check_out_date, rooms, guests, guest, guest.first_name, guest.last_name,
+      guest.email, guest.phone, consent, consent.accepted, consent.text_version, card_token, expected_amount]

@@ -1,7 +1,10 @@
 # A query parameter described by content instead of schema takes the schema of
 # the CacheControlNoStore header through $ref. In a parameter the pattern holds
 # neither end of the value, so any text with no-store in it passes. The
-# exception is only for the schema of a Cache-Control response header.
+# exception is only for the schema of a Cache-Control response header. The
+# subset forbids content in parameters, so rule/subset-parameter-content fires
+# too.
+# also-fires: rule/subset-parameter-content
 openapi: 3.1.0
 info:
   title: Fixture contracts--pattern-anchored--no-store-in-parameter-content

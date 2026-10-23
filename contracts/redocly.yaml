@@ -130,6 +130,10 @@ rules:
 
   # --- Subset of OpenAPI 3.1 understood by league/openapi-psr7-validator 0.24 ---
 
+  # contentMediaType, contentEncoding and contentSchema the response validator
+  # does not check, while a reader would take them for a check. $defs belongs
+  # to the root of a schema file, which the walker never visits, so the rule
+  # sees only $defs inside a schema: the types of draft-07 do not walk them.
   rule/subset-forbidden-keywords:
     severity: error
     message: Keyword is outside the subset of OpenAPI 3.1 that the response validator understands
@@ -138,7 +142,8 @@ rules:
     assertions:
       disallowed: [const, unevaluatedProperties, unevaluatedItems, patternProperties, propertyNames, if, then, else,
         dependentSchemas, dependentRequired, prefixItems, contains, exclusiveMinimum, exclusiveMaximum, $id, $anchor,
-        $dynamicRef, $dynamicAnchor, nullable, additionalItems, dependencies, definitions]
+        $dynamicRef, $dynamicAnchor, nullable, additionalItems, dependencies, definitions, contentMediaType,
+        contentEncoding, contentSchema, $defs]
 
   # `items` is one schema. A list of schemas is the tuple form of draft-07, the
   # dialect of AsyncAPI schemas, and the response validator does not check it.
@@ -166,24 +171,36 @@ rules:
         type: string
 
   contracts/subset-closed-object: error
-
-  # An unescaped `$`, also inside brackets, or \d, \D, \w, \W.
-  rule/subset-pattern-portable:
-    severity: error
-    message: 'Pattern must not use an unescaped $ or \d, \D, \w, \W: write the end of the string as (?![\s\S]) and classes such as [0-9] explicitly'
-    subject:
-      type: Schema
-      property: pattern
-    assertions:
-      notPattern: '/(?:^|[^\\])(?:\\\\)*(?:\$|\\[dDwW])/'
+  contracts/subset-boolean-schema: error
 
   # Every pattern holds the whole string, the same in ECMA-262 and in PCRE; the
   # one exception is the pattern of CacheControlNoStore in the schema of a
   # Cache-Control response header. The plugin lists the conditions.
   contracts/pattern-anchored: error
+  # No pattern uses what the two engines read differently, such as $, \d or .
+  # outside a class. The plugin lists the constructs.
+  contracts/pattern-portable: error
 
   contracts/ref-form: error
   contracts/ref-siblings: error
+
+  # --- Names ---
+
+  # Names of properties are ASCII snake_case. The dictionary of personal data
+  # in lint/plugin.js compares names without the characters outside a-z and
+  # 0-9, so a look-alike letter of another alphabet would carry a name of
+  # personal data past it.
+  rule/property-name-snake-case:
+    severity: error
+    message: 'Property name must be ASCII snake_case: a look-alike letter of another alphabet would carry a name of personal data past the checks. Details: {{problems}}'
+    subject:
+      type: Schema
+      property: properties
+    assertions:
+      schema:
+        type: object
+        propertyNames:
+          pattern: '^[a-z][a-z0-9]*(?:_[a-z0-9]+)*(?![\s\S])'
 
 oas3_1Rules:
   # The repository has no license.
@@ -195,6 +212,39 @@ oas3_1Rules:
     allowAdditionalProperties: false
   no-invalid-schema-examples: error
   no-invalid-parameter-examples: error
+
+  # --- Places that the rules do not walk ---
+
+  # The rules check the schema of a media type, a parameter and a header. A
+  # media type without a schema takes a body of any shape; no rule walks the
+  # headers of encoding or the content of a parameter or a header, where an
+  # email would pass contracts/pii-placement. Refusing them is simpler than
+  # teaching every rule to walk them. struct requires schema or content of a
+  # parameter and a header, so without content each of them has its schema.
+  rule/subset-media-type:
+    severity: error
+    message: 'Media type must have `schema` and no `encoding`: without a schema the body may be anything, and no rule walks the headers of encoding'
+    subject:
+      type: MediaType
+    assertions:
+      required: [schema]
+      disallowed: [encoding]
+
+  rule/subset-parameter-content:
+    severity: error
+    message: 'Parameter must have `schema`, not `content`: no rule walks the content of a parameter'
+    subject:
+      type: Parameter
+    assertions:
+      disallowed: [content]
+
+  rule/subset-header-content:
+    severity: error
+    message: 'Header must have `schema`, not `content`: no rule walks the content of a header'
+    subject:
+      type: Header
+    assertions:
+      disallowed: [content]
 
   # --- Paths ---
 
@@ -811,6 +861,18 @@ oas3_1Rules:
   contracts/webhook-shape: error
 
 async3Rules:
+  # A schema stands at its place, not in the multi-format object
+  # {schemaFormat, schema}: the rules of messages and the services read the
+  # schema at the place of the payload or the headers.
+  rule/subset-multi-format-schema:
+    severity: error
+    message: 'Schema must stand at its place, not in the multi-format object {schemaFormat, schema}: the rules of messages and the services do not read it there'
+    subject:
+      type: MultiFormatSchema
+      property: schema
+    assertions:
+      defined: false
+
   # --- Events: the envelope, closed schemas, fields without personal data ---
 
   contracts/event-envelope: error

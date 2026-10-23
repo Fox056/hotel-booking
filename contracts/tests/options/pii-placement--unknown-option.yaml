@@ -1,0 +1,10 @@
+# allowedResponse, a misspelt option, stands next to the right allowedResponses.
+# expect: option allowedResponse is unknown
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/pii-placement:
+    severity: error
+    allowedResponses: []
+    allowedResponse: []

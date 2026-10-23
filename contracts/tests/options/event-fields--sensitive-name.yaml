@@ -1,0 +1,11 @@
+# payloadFields lists email, personal data, which events never carry.
+# expect: must not list personal data
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+async3Rules:
+  contracts/event-fields:
+    severity: error
+    envelopeFields: [message_id, type, created_at, headers, traceparent, version, epoch, number, change_id, payload]
+    payloadFields: [hotel_id, room_type_id, date, offered, sold, held, remaining, oversold, price, booking_id, status,
+      not_confirmed_reason, payment_outcome_unresolved, refund_status, amount, refund_attempt, email]

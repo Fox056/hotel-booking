@@ -1,0 +1,8 @@
+# allowedResponses is missing: the rule needs the list, an empty one if no response may carry personal data.
+# expect: option allowedResponses must be a list
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/pii-placement:
+    severity: error

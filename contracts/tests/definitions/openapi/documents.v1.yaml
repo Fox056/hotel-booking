@@ -1,0 +1,27 @@
+# Test of step 9 of bin/check.sh: the OpenAPI document of the layout. Its
+# response reaches FromOpenapi of schemas/entries.v1.json, through it
+# ThroughEntry, and Shared of the same file.
+openapi: 3.1.0
+info:
+  title: Test of the definitions check, OpenAPI
+  version: 1.0.0
+paths:
+  /v1/entries:
+    get:
+      operationId: getEntries
+      summary: Get the entries
+      security: []
+      responses:
+        '200':
+          description: The entries.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entry, shared]
+                properties:
+                  entry:
+                    $ref: '../schemas/entries.v1.json#/$defs/FromOpenapi'
+                  shared:
+                    $ref: '../schemas/entries.v1.json#/$defs/Shared'
+                additionalProperties: false

@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "entries.v1",
+  "description": "Test of step 9 of bin/check.sh. FromOpenapi, ThroughEntry, FromAsyncapi and Shared are reached from openapi/ and asyncapi/ of the layout. Unused, OnlyFromUnused and OnlyFromFixture are not, and expected.txt lists them.",
+  "$defs": {
+    "FromOpenapi": {
+      "description": "Reached from the response of openapi/documents.v1.yaml.",
+      "type": "object",
+      "required": ["through"],
+      "properties": {
+        "through": {"$ref": "#/$defs/ThroughEntry"}
+      },
+      "additionalProperties": false
+    },
+    "ThroughEntry": {
+      "description": "Reached only through the property of FromOpenapi.",
+      "type": "string",
+      "maxLength": 20
+    },
+    "FromAsyncapi": {
+      "description": "Reached from the payload of the message of asyncapi/documents.v1.yaml.",
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": {"type": "string", "maxLength": 20}
+      },
+      "additionalProperties": false
+    },
+    "Shared": {
+      "description": "Reached from the response of openapi/documents.v1.yaml. other.v1.json has an entry of the same name that nothing references.",
+      "type": "string",
+      "maxLength": 20
+    },
+    "Unused": {
+      "description": "Nothing references it: unwalked.",
+      "type": "object",
+      "properties": {
+        "detail": {"$ref": "#/$defs/OnlyFromUnused"}
+      },
+      "additionalProperties": false
+    },
+    "OnlyFromUnused": {
+      "description": "Only Unused references it, and Unused is unwalked itself: unwalked.",
+      "type": "string",
+      "maxLength": 20
+    },
+    "OnlyFromFixture": {
+      "description": "Only rules/fixture.yaml references it, a document outside openapi/ and asyncapi/: unwalked.",
+      "type": "string",
+      "maxLength": 20
+    }
+  }
+}

@@ -1,7 +1,9 @@
-# A pattern with \w.
+# A free-text comment, comment, in a response: free text may carry any
+# personal data. comment is a part of the dictionary of personal data: a name
+# that contains it is personal data.
 openapi: 3.1.0
 info:
-  title: Fixture rule--subset-pattern-portable--word-class
+  title: Fixture contracts--pii-placement--comment-in-response
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -20,6 +22,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Result'
+          headers:
+            Cache-Control:
+              $ref: '../openapi/common.v1.yaml#/components/headers/CacheControlNoStore'
         '400':
           $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
         '404':
@@ -45,8 +50,7 @@ components:
         name:
           type: string
           maxLength: 100
-        code:
+        comment:
           type: string
-          maxLength: 10
-          pattern: '^\w+(?![\s\S])'
+          maxLength: 500
       additionalProperties: false

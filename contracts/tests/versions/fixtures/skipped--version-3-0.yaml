@@ -1,0 +1,9 @@
+# Test of step 8 of bin/check.sh: OpenAPI 3.0.3 in a directory where either
+# kind of document may lie, as in tests/rules/. Redocly runs none of
+# oas3_1Rules on it, so a control fixture of this version would pass without
+# being checked.
+openapi: 3.0.3
+info:
+  title: Test of the versions check, OpenAPI 3.0 among fixtures
+  version: 1.0.0
+paths: {}

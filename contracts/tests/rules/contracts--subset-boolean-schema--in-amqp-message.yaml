@@ -1,0 +1,48 @@
+# The schema of a property in the payload of a message is true, which admits
+# any value. The channel stays outside Kafka, so the rules of events skip it,
+# and the visitor of schemas does not see a boolean schema written in
+# properties.
+asyncapi: 3.0.0
+info:
+  title: Fixture contracts--subset-boolean-schema--in-amqp-message
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  refund:
+    address: payment.refund
+    messages:
+      refundRequested:
+        $ref: '#/components/messages/refundRequested'
+operations:
+  sendRefund:
+    action: send
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: booking
+components:
+  schemas:
+    RefundCommand:
+      type: object
+      required: [booking_id]
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+        options: true
+  messages:
+    refundRequested:
+      name: payment.refund.v1
+      payload:
+        $ref: '#/components/schemas/RefundCommand'
+  securitySchemes:
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

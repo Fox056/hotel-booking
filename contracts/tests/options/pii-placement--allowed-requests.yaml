@@ -1,0 +1,10 @@
+# allowedRequests is left at pii-placement, while request-fields holds the list of request bodies now.
+# expect: option allowedRequests has moved
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/pii-placement:
+    severity: error
+    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
+    allowedResponses: []

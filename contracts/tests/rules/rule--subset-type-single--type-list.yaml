@@ -45,7 +45,7 @@ components:
         name:
           type: string
           maxLength: 100
-        note:
+        label:
           type: [string, 'null']
           maxLength: 100
       additionalProperties: false

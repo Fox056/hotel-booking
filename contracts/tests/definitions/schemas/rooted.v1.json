@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "rooted.v1",
+  "description": "Test of step 9 of bin/check.sh: a schema at the root of the file. No document references the root, so no rule of schemas would check it; the root may hold only $schema, title, description and $defs. Inner is reached from asyncapi/documents.v1.yaml.",
+  "type": "object",
+  "properties": {
+    "code": {"type": "string", "maxLength": 20}
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "Inner": {
+      "description": "Reached from components/schemas of asyncapi/documents.v1.yaml.",
+      "type": "string",
+      "maxLength": 20
+    }
+  }
+}

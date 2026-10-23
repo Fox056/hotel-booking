@@ -1,0 +1,20 @@
+# Test of step 9 of bin/check.sh: a document outside openapi/ and asyncapi/ of
+# the layout, as a fixture is. Its reference to OnlyFromFixture of
+# schemas/entries.v1.json does not count, so that entry stays unwalked.
+openapi: 3.1.0
+info:
+  title: Test of the definitions check, a fixture
+  version: 1.0.0
+paths:
+  /v1/fixture:
+    get:
+      operationId: getFixture
+      summary: Get the fixture
+      security: []
+      responses:
+        '200':
+          description: The fixture.
+          content:
+            application/json:
+              schema:
+                $ref: '../schemas/entries.v1.json#/$defs/OnlyFromFixture'

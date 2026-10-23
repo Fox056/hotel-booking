@@ -1,0 +1,23 @@
+# Test of step 9 of bin/check.sh: the AsyncAPI document of the layout. The
+# payload of its message reaches FromAsyncapi of schemas/entries.v1.json, the
+# headers Referenced of schemas/other.v1.json, and components/schemas Inner of
+# schemas/rooted.v1.json.
+asyncapi: 3.0.0
+info:
+  title: Test of the definitions check, AsyncAPI
+  version: 1.0.0
+defaultContentType: application/json
+channels:
+  test.v1:
+    address: test.v1
+    messages:
+      test.state.v1:
+        name: test.state.v1
+        payload:
+          $ref: '../schemas/entries.v1.json#/$defs/FromAsyncapi'
+        headers:
+          $ref: '../schemas/other.v1.json#/$defs/Referenced'
+components:
+  schemas:
+    Inner:
+      $ref: '../schemas/rooted.v1.json#/$defs/Inner'

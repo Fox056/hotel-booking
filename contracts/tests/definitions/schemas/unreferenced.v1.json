@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "unreferenced.v1",
+  "description": "Test of step 9 of bin/check.sh: nothing references this file, so its entry stays unwalked.",
+  "$defs": {
+    "Lonely": {
+      "description": "Nothing references it: unwalked.",
+      "type": "string",
+      "maxLength": 20
+    }
+  }
+}

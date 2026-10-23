@@ -3,8 +3,12 @@
 # bookingToken and one secured by hotelApiKey. With a path under /v1/bookings/
 # it is also a document of bookings, so it has the booking enumerations. The
 # body of booking creation has exactly the fields of its list in
-# contracts/request-fields, through $ref and a nested object. No rule may
-# report anything here.
+# contracts/request-fields, through $ref and a nested object. The offers of the
+# search have dinner_included, time_span, company, inner, refund_not_executed
+# and footnote: inn, pan and note of the dictionary of personal data are
+# compared with the words of a name, so none of these names is personal data,
+# and the search response needs no Cache-Control. No rule may report anything
+# here.
 # Internal operations are in valid--internal.yaml: serviceToken may be
 # described only in a document whose paths are all internal.
 openapi: 3.1.0
@@ -249,6 +253,22 @@ components:
                 $ref: '../openapi/common.v1.yaml#/components/schemas/Id'
               amount:
                 $ref: '#/components/schemas/Amount'
+              dinner_included:
+                type: boolean
+              time_span:
+                type: string
+                maxLength: 11
+              company:
+                type: string
+                maxLength: 100
+              inner:
+                type: string
+                maxLength: 10
+              refund_not_executed:
+                type: boolean
+              footnote:
+                type: string
+                maxLength: 100
             additionalProperties: false
       additionalProperties: false
     BookingRequest:

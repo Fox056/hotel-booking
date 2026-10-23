@@ -1,10 +1,9 @@
-# A pattern ends with $, which also matches before a final line break in PCRE.
-# The pattern has no end anchor (?![\s\S]), so contracts/pattern-anchored fires
-# too.
-# also-fires: contracts/pattern-anchored
+# A pattern with \u escapes, here a class of printable ASCII. ECMA-262
+# compiles \uXXXX and \u{...}, PCRE does not, and then league refuses every
+# value.
 openapi: 3.1.0
 info:
-  title: Fixture rule--subset-pattern-portable--dollar-anchor
+  title: Fixture contracts--pattern-portable--unicode-escape
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -50,6 +49,6 @@ components:
           maxLength: 100
         code:
           type: string
-          maxLength: 10
-          pattern: '^[a-z]+$'
+          maxLength: 100
+          pattern: '^[\u0020-\u007E]{1,100}(?![\s\S])'
       additionalProperties: false

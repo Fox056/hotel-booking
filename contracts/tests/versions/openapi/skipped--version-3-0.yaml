@@ -1,0 +1,7 @@
+# Test of step 8 of bin/check.sh: OpenAPI 3.0.3, so Redocly runs none of
+# oas3_1Rules on the document, and our rules would check nothing here.
+openapi: 3.0.3
+info:
+  title: Test of the versions check, OpenAPI 3.0
+  version: 1.0.0
+paths: {}

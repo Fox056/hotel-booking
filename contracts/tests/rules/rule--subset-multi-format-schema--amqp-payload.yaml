@@ -1,0 +1,50 @@
+# The payload of a message is the wrapper {schemaFormat, schema} of AsyncAPI 3
+# instead of a schema. Neither league nor the rules of events understand the
+# wrapper: the rules that walk the schemas of messages would take it for the
+# schema itself. The channel stays outside Kafka, so no rule of events looks at
+# it at all.
+asyncapi: 3.0.0
+info:
+  title: Fixture rule--subset-multi-format-schema--amqp-payload
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  refund:
+    address: payment.refund
+    messages:
+      refundRequested:
+        $ref: '#/components/messages/refundRequested'
+operations:
+  sendRefund:
+    action: send
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: booking
+components:
+  schemas:
+    RefundCommand:
+      type: object
+      required: [booking_id]
+      properties:
+        booking_id:
+          type: string
+          format: uuid
+  messages:
+    refundRequested:
+      name: payment.refund.v1
+      payload:
+        schemaFormat: application/vnd.aai.asyncapi+json;version=3.0.0
+        schema:
+          $ref: '#/components/schemas/RefundCommand'
+  securitySchemes:
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

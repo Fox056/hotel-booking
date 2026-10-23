@@ -1,4 +1,6 @@
-# A personal data field in another spelling, firstName, in a response.
+# A personal data field in another spelling, firstName, in a response. The
+# name is not ASCII snake_case, so rule/property-name-snake-case fires too.
+# also-fires: rule/property-name-snake-case
 openapi: 3.1.0
 info:
   title: Fixture contracts--pii-placement--camel-case-field-in-response

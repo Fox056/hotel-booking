@@ -1,0 +1,54 @@
+# A pattern with \v. In PCRE it is any vertical white space, LF included, in
+# ECMA-262 only the vertical tab: a value with a line break passes [^\v] in
+# Redocly and fails it in league.
+openapi: 3.1.0
+info:
+  title: Fixture contracts--pattern-portable--vertical-whitespace
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability
+      security: []
+      responses:
+        '200':
+          description: Offers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  schemas:
+    Result:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        code:
+          type: string
+          maxLength: 100
+          pattern: '^[^\v]{1,100}(?![\s\S])'
+      additionalProperties: false
