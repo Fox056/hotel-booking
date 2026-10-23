@@ -1,0 +1,88 @@
+# Control fixture: the fields of Result have patterns that hold the whole
+# value. Each starts with ^ and ends with the group (?![\s\S]) at the top level,
+# whatever stands between: alternatives inside a group, | inside a class, an
+# escaped \|, lookaheads as in CardToken, \p{L} as in PersonName, and a moment
+# with the full pattern. The inline Cache-Control header has exactly the
+# pattern of CacheControlNoStore, the one exception, which holds only in the
+# schema of a Cache-Control response header; the same header through $ref is
+# in valid--public.yaml.
+# No rule may report anything here.
+openapi: 3.1.0
+info:
+  title: Control fixture, patterns that hold the whole value
+  version: 1.0.0
+servers:
+  - url: https://api.hotel-booking.test
+paths:
+  /v1/hotels/{hotel_id}/search:
+    parameters:
+      - $ref: '../openapi/common.v1.yaml#/components/parameters/HotelId'
+    get:
+      operationId: searchAvailability
+      summary: Search availability
+      security: []
+      responses:
+        '200':
+          description: Offers.
+          headers:
+            Cache-Control:
+              required: true
+              schema:
+                type: string
+                maxLength: 200
+                pattern: '(?:^|,)[ \t]*no-store[ \t]*(?:,|(?![\s\S]))'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Result'
+        '400':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
+        '404':
+          $ref: '../openapi/common.v1.yaml#/components/responses/NotFound'
+        '414':
+          $ref: '../openapi/common.v1.yaml#/components/responses/UriTooLong'
+        '429':
+          $ref: '../openapi/common.v1.yaml#/components/responses/TooManyRequests'
+        '500':
+          $ref: '../openapi/common.v1.yaml#/components/responses/InternalServerError'
+        '502':
+          $ref: '../openapi/common.v1.yaml#/components/responses/BadGateway'
+        '503':
+          $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
+        '504':
+          $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
+components:
+  schemas:
+    Result:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          maxLength: 100
+        timestamp:
+          type: string
+          maxLength: 13
+          pattern: '^(?:[0-9]{10}|[0-9]{13})(?![\s\S])'
+        flags:
+          type: string
+          maxLength: 10
+          pattern: '^[|a-z]{1,10}(?![\s\S])'
+        pair:
+          type: string
+          maxLength: 9
+          pattern: '^[a-z]{1,4}\|[a-z]{1,4}(?![\s\S])'
+        reference:
+          type: string
+          maxLength: 132
+          pattern: '^tok_(?=[A-Za-z0-9_-]{16,128}(?![\s\S]))(?![A-Za-z0-9_-]*?[0-9](?:[-_]*[0-9]){11})[A-Za-z0-9_-]{16,128}(?![\s\S])'
+        title:
+          type: string
+          maxLength: 100
+          pattern: '^\p{L}(?:[\p{L}\p{M} .''’-]{0,98}[\p{L}\p{M}.])?(?![\s\S])'
+        updated_at:
+          type: string
+          format: date-time
+          maxLength: 20
+          pattern: '^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z(?![\s\S])'
+      additionalProperties: false

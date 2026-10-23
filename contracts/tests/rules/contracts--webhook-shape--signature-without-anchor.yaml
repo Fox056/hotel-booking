@@ -1,5 +1,7 @@
 # The schema of X-Signature has no end anchor: a header that the front glued
-# from two lines with ", " would pass it.
+# from two lines with ", " would pass it. For the same reason
+# contracts/pattern-anchored fires too.
+# also-fires: contracts/pattern-anchored
 openapi: 3.1.0
 info:
   title: Fixture contracts--webhook-shape--signature-without-anchor
