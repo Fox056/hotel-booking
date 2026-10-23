@@ -1,6 +1,9 @@
 # card_token in the body of booking creation is the boolean schema true. The
 # name is in the list, but the value may be any JSON, an object with any fields
-# included, and the rules of schemas do not see a boolean schema.
+# included, and the visitor of schemas does not see a boolean schema. A boolean
+# schema is outside the subset in any schema, so
+# contracts/subset-boolean-schema fires too.
+# also-fires: contracts/subset-boolean-schema
 openapi: 3.1.0
 info:
   title: Fixture contracts--request-fields--boolean-schema

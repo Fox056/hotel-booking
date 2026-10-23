@@ -1,7 +1,8 @@
 # The pattern mentions no-store, but forbids it: only the exact pattern of
 # CacheControlNoStore passes. The pattern has no end anchor, so
-# contracts/pattern-anchored fires too.
-# also-fires: contracts/pattern-anchored
+# contracts/pattern-anchored fires too, and it has . outside a class, so
+# contracts/pattern-portable fires as well.
+# also-fires: contracts/pattern-anchored, contracts/pattern-portable
 openapi: 3.1.0
 info:
   title: Fixture contracts--no-store-cache-control--negative-lookahead-pattern

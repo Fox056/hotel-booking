@@ -1,0 +1,10 @@
+# service, a misspelt option, stands next to the right services.
+# expect: option service is unknown
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+async3Rules:
+  contracts/event-access:
+    severity: error
+    services: [inventory, booking, payment, channel-sync]
+    service: inventory

@@ -1,6 +1,8 @@
 # The text of the pattern ends with (?![\s\S]), but inside a class: [(?![\s\S]
 # is one class of any character, and the last ) closes group 1. Only the start
-# of the value is checked, any tail passes.
+# of the value is checked, any tail passes. The class has \s and \S but is not
+# exactly [\s\S], so contracts/pattern-portable fires too.
+# also-fires: contracts/pattern-portable
 openapi: 3.1.0
 info:
   title: Fixture contracts--pattern-anchored--end-anchor-in-class

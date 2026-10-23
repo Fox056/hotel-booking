@@ -48,7 +48,7 @@ components:
         details:
           type: object
           properties:
-            note:
+            label:
               type: string
               maxLength: 100
       additionalProperties: false

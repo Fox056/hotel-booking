@@ -1,0 +1,41 @@
+# Test of step 10 of bin/check.sh: the root of inventory@v1 starts with ./.
+# Redocly resolves it to the same file as openapi/inventory.v1.yaml, so a
+# second spelling of one root would slip past the check of repeated roots.
+# expect: root ./openapi/inventory.v1.yaml is not a document
+
+extends: [recommended]
+plugins: [./lint/plugin.js]
+telemetry: off
+
+apis:
+  common@v1:
+    root: openapi/common.v1.yaml
+    rules:
+      # The document has only components: no servers, no operations, and its
+      # components are used by the other documents.
+      no-empty-servers: off
+      no-unused-components: off
+      security-defined: off
+  inventory@v1:
+    root: ./openapi/inventory.v1.yaml
+  inventory-internal@v1:
+    root: openapi/inventory-internal.v1.yaml
+  booking@v1:
+    root: openapi/booking.v1.yaml
+  channel-sync@v1:
+    root: openapi/channel-sync.v1.yaml
+  channel-stub@v1:
+    root: openapi/channel-stub.v1.yaml
+    rules:
+      # The API of an external system that the channel stubs implement. It has
+      # neither our front nor our gateway, so the responses they add, their
+      # media types and the shape of our 401 do not apply; errors of the stub
+      # have no body. Every other rule applies.
+      rule/public-response-set: off
+      contracts/error-media-types: off
+      contracts/unauthorized-shape: off
+  events@v1:
+    root: asyncapi/events.v1.yaml
+
+rules:
+  contracts/string-limit: error

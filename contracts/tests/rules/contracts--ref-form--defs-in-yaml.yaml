@@ -1,4 +1,7 @@
-# A $ref into $defs inside a YAML document.
+# A $ref into $defs inside a YAML document. The schema Holder keeps the target
+# in a $defs of its own, a keyword outside the subset in any schema, so
+# rule/subset-forbidden-keywords fires too.
+# also-fires: rule/subset-forbidden-keywords
 openapi: 3.1.0
 info:
   title: Fixture contracts--ref-form--defs-in-yaml

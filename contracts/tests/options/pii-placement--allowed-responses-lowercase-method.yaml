@@ -1,0 +1,9 @@
+# allowedResponses names an operation with its method in lowercase, which would match no operation.
+# expect: option allowedResponses must be a list
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/pii-placement:
+    severity: error
+    allowedResponses: ['get /v1/x']

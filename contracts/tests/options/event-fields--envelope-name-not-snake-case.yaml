@@ -1,0 +1,11 @@
+# envelopeFields has 'Message-Id', the form of an AMQP header, instead of the snake_case message_id.
+# expect: option envelopeFields must be a list
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+async3Rules:
+  contracts/event-fields:
+    severity: error
+    envelopeFields: ['Message-Id', type, created_at, headers, traceparent, version, epoch, number, change_id, payload]
+    payloadFields: [hotel_id, room_type_id, date, offered, sold, held, remaining, oversold, price, booking_id, status,
+      not_confirmed_reason, payment_outcome_unresolved, refund_status, amount, refund_attempt]

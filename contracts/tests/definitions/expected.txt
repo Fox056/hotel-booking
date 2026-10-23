@@ -1,0 +1,16 @@
+# Findings of step 9 of bin/check.sh on this layout, a line each, exactly;
+# paths are relative to tests/definitions.
+# Nothing references the entry.
+unwalked schemas/entries.v1.json#/$defs/Unused
+# Only an unwalked entry references it.
+unwalked schemas/entries.v1.json#/$defs/OnlyFromUnused
+# Only rules/fixture.yaml references it, outside openapi/ and asyncapi/.
+unwalked schemas/entries.v1.json#/$defs/OnlyFromFixture
+# A referenced entry of another file has the same name.
+unwalked schemas/other.v1.json#/$defs/Shared
+# Nothing references the file.
+unwalked schemas/unreferenced.v1.json#/$defs/Lonely
+# A schema at the root of the file.
+root schemas/rooted.v1.json
+# A file without entries in $defs.
+empty schemas/empty.v1.json

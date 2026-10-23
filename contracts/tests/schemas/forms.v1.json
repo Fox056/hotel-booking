@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Schema forms outside the subset, for lint fixtures",
+  "description": "Test helper: $defs entries for the violating fixtures in ../rules/ that reach a schema of a .json file through $ref, the way the contracts reach ../../schemas/*.json. No contract references this file. Every entry is a variant for the violating fixture named in its description; AnyValue, the boolean schema true, cannot have one: it serves contracts--subset-boolean-schema--through-ref.",
+  "$defs": {
+    "AnyValue": true,
+    "Rooms": {
+      "description": "rule--subset-forbidden-keywords--nested-defs: the entry keeps the schema of count in a $defs of its own, below the top level of the file.",
+      "type": "object",
+      "required": ["count"],
+      "properties": {
+        "count": {"$ref": "#/$defs/Rooms/$defs/Count"}
+      },
+      "additionalProperties": false,
+      "$defs": {
+        "Count": {"type": "integer", "minimum": 1, "maximum": 5}
+      }
+    }
+  }
+}

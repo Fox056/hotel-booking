@@ -1,0 +1,8 @@
+# Test of step 8 of bin/check.sh: 3.1.0-rc1 starts with "3.1.", so Redocly
+# takes the document for OpenAPI 3.1 and runs oas3_1Rules on it, but the value
+# is not of the form 3.1.<n>.
+openapi: 3.1.0-rc1
+info:
+  title: Test of the versions check, a release candidate of OpenAPI 3.1
+  version: 1.0.0
+paths: {}

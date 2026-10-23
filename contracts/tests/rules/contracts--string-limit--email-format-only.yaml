@@ -45,7 +45,7 @@ components:
         name:
           type: string
           maxLength: 100
-        contact:
+        reply_to:
           type: string
           format: email
       additionalProperties: false

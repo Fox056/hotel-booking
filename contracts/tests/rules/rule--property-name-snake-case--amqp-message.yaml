@@ -1,0 +1,47 @@
+# A property of the payload of a message is named in camelCase. The rule
+# applies to the schemas of AsyncAPI documents as well; the channel stays
+# outside Kafka, so the rules of events, with their own list of names, skip
+# it.
+asyncapi: 3.0.0
+info:
+  title: Fixture rule--property-name-snake-case--amqp-message
+  version: 1.0.0
+defaultContentType: application/json
+servers:
+  rabbitmq:
+    host: rabbitmq.hotel-booking.test:5672
+    protocol: amqp
+    security:
+      - $ref: '#/components/securitySchemes/rabbitmqUser'
+channels:
+  refund:
+    address: payment.refund
+    messages:
+      refundRequested:
+        $ref: '#/components/messages/refundRequested'
+operations:
+  sendRefund:
+    action: send
+    channel:
+      $ref: '#/channels/refund'
+    messages:
+      - $ref: '#/channels/refund/messages/refundRequested'
+    x-service: booking
+components:
+  schemas:
+    RefundCommand:
+      type: object
+      required: [bookingId]
+      properties:
+        bookingId:
+          type: string
+          format: uuid
+  messages:
+    refundRequested:
+      name: payment.refund.v1
+      payload:
+        $ref: '#/components/schemas/RefundCommand'
+  securitySchemes:
+    rabbitmqUser:
+      type: userPassword
+      description: RabbitMQ user and password of the service.

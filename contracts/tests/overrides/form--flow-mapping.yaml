@@ -1,0 +1,13 @@
+# Test of step 10 of bin/check.sh: the block apis is one flow mapping on one
+# line. Redocly reads the same apis from it, overrides included, but the strict
+# parse of the step reads only the block form.
+# expect: apis is not a block
+
+extends: [recommended]
+plugins: [./lint/plugin.js]
+telemetry: off
+
+apis: {common@v1: {root: openapi/common.v1.yaml, rules: {no-empty-servers: off, no-unused-components: off, security-defined: off}}, inventory@v1: {root: openapi/inventory.v1.yaml}, inventory-internal@v1: {root: openapi/inventory-internal.v1.yaml}, booking@v1: {root: openapi/booking.v1.yaml}, channel-sync@v1: {root: openapi/channel-sync.v1.yaml}, channel-stub@v1: {root: openapi/channel-stub.v1.yaml, rules: {rule/public-response-set: off, contracts/error-media-types: off, contracts/unauthorized-shape: off}}, events@v1: {root: asyncapi/events.v1.yaml}}
+
+rules:
+  contracts/string-limit: error

@@ -1,0 +1,9 @@
+# A service of services is a mapping, {name: channel-sync}, instead of the name of the service.
+# expect: option services must be a list
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+async3Rules:
+  contracts/event-access:
+    severity: error
+    services: [inventory, booking, payment, {name: channel-sync}]

@@ -1,6 +1,8 @@
 # The body of booking creation is application/json without a schema: any JSON
 # passes it, personal data included, and there is no tree of fields to hold to
-# the list.
+# the list. The subset requires a schema in every media type, so
+# rule/subset-media-type fires too.
+# also-fires: rule/subset-media-type
 openapi: 3.1.0
 info:
   title: Fixture contracts--request-fields--booking-body-without-schema

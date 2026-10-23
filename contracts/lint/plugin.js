@@ -19,7 +19,9 @@
  * - assertions see a node after `$ref` resolution, so the raw `$ref` string and
  *   the keys next to `$ref` are visible only to a `ref` visitor;
  * - an assertion can match a value against a regular expression but cannot
- *   read it: it can neither compile a pattern nor find its groups and classes.
+ *   read it: it can neither compile a pattern nor find its groups and classes;
+ * - the walker gives no visitor a boolean schema written under `properties`,
+ *   so only a visitor of the parent sees it.
  *
  * The rules that walk operations start from the `Paths` node and resolve every
  * reference themselves: the walker visits a shared node once per document,
@@ -79,14 +81,21 @@ const PATTERN_END = '(?![\\s\\S])';
 
 // Property, parameter and header names are compared after normalizeName():
 // lowercase, without separators. Personal data is a name that contains one of
-// PII_PARTS, equals one of PII_NAMES, or starts with PII_PREFIX and is not one
-// of PII_PREFIX_EXCEPTIONS. `pan` is compared whole, or `company` would match;
-// `cardholder` is not shortened to `holder`, or `placeholder` would match;
-// `guests` is the number of guests. A name that contains BOOKING_TOKEN_PART is
-// the booking token.
+// PII_PARTS, has one of PII_WORDS among its words, see nameWords(), or starts
+// with PII_PREFIX and is not one of PII_PREFIX_EXCEPTIONS. PII_WORDS are short
+// and would match inside longer names: `pan` in company and time_span, `inn`
+// in inner and dinner_included, `note` in refund_not_executed and footnote,
+// `dob` in adobe_id. So they match a whole word, as card_pan, payer_inn, notes
+// and dob. `guest` is a word as well, so lead_guest_name and primary_guest
+// match; `guests` is the number of guests. `cardholder` is not shortened to
+// `holder`, or `placeholder` would match. The tax number of a company, an inn
+// or a tax_id, counts as personal data too: a contract that needs one gets an
+// explicit exception here, as PII_PREFIX_EXCEPTIONS, not a renamed field. A
+// name that contains BOOKING_TOKEN_PART is the booking token.
 const PII_PARTS = ['email', 'phone', 'firstname', 'lastname', 'middlename', 'surname', 'fullname', 'patronymic',
-  'passport', 'birthdate', 'birthday', 'dateofbirth', 'cardtoken', 'cardnumber', 'cardholder', 'address'];
-const PII_NAMES = ['pan'];
+  'passport', 'birthdate', 'birthday', 'dateofbirth', 'cardtoken', 'cardnumber', 'cardholder', 'address', 'snils',
+  'contact', 'comment', 'remark', 'givenname', 'familyname', 'mobile', 'msisdn', 'specialrequest', 'taxid'];
+const PII_WORDS = ['pan', 'inn', 'note', 'notes', 'dob', 'guest'];
 const PII_PREFIX = 'guest';
 const PII_PREFIX_EXCEPTIONS = ['guests'];
 const BOOKING_TOKEN_PART = 'bookingtoken';
@@ -200,12 +209,21 @@ function normalizeName(name) {
   return String(name).toLowerCase().replace(/[^a-z0-9]/g, '');
 }
 
+// The words of a name, normalized: its parts between `_`, `-` and spaces, and
+// before a capital letter that starts a word: after a small letter or a
+// digit, or before a small letter. A run of capitals stays one word, so
+// X-Payer-INN is x, payer, inn and cardPANNumber is card, pan, number.
+function nameWords(name) {
+  return String(name).split(/[_\-\s]+|(?<=[a-z0-9])(?=[A-Z])|(?<=[A-Z])(?=[A-Z][a-z])/)
+    .map((word) => normalizeName(word));
+}
+
 function sensitiveKind(name) {
   const normalized = normalizeName(name);
   if (normalized.includes(BOOKING_TOKEN_PART)) {
     return BOOKING_TOKEN;
   }
-  if (PII_NAMES.includes(normalized) || PII_PARTS.some((part) => normalized.includes(part))
+  if (PII_PARTS.some((part) => normalized.includes(part)) || nameWords(name).some((word) => PII_WORDS.includes(word))
     || (normalized.startsWith(PII_PREFIX) && !PII_PREFIX_EXCEPTIONS.includes(normalized))) {
     return PERSONAL_DATA;
   }
@@ -219,7 +237,7 @@ function eventSensitiveKind(name) {
     return kind;
   }
   const normalized = normalizeName(name);
-  const words = String(name).split(/[_\-\s]+|(?=[A-Z])/).map((word) => normalizeName(word));
+  const words = nameWords(name);
   return EVENT_SENSITIVE_PARTS.some((part) => normalized.includes(part))
     || words.some((word) => EVENT_SENSITIVE_WORDS.includes(word))
     ? INDIRECT_IDENTIFIER
@@ -552,6 +570,16 @@ function isOperationList(list) {
   return Array.isArray(list) && list.every((item) => typeof item === 'string' && OPERATION_KEY.test(item));
 }
 
+// Refuses a setting of contracts/`rule` other than severity and `names`: a
+// misspelt option would be ignored, and the rule would run without it. An
+// Error from a factory stops the whole lint, so a wrong option cannot pass.
+function checkOptionNames(rule, options, names) {
+  const unknown = Object.keys(options).filter((key) => key !== 'severity' && !names.includes(key));
+  if (unknown.length > 0) {
+    throw new Error(`contracts/${rule}: option ${unknown.join(', ')} is unknown; the options are ${names.join(', ')}`);
+  }
+}
+
 // The header must be present, be required and, if `checkSchema` is given,
 // have a schema that passes it.
 function checkRequiredHeader(ctx, report, response, location, name, checkSchema) {
@@ -784,6 +812,7 @@ function PiiPlacement(options) {
   if (options.allowedRequests !== undefined) {
     throw new Error('contracts/pii-placement: option allowedRequests has moved to contracts/request-fields, the rule of request bodies');
   }
+  checkOptionNames('pii-placement', options, ['allowedResponses']);
   if (!isOperationList(allowedResponses)) {
     throw new Error('contracts/pii-placement: option allowedResponses must be a list of "METHOD path", empty if none');
   }
@@ -1031,12 +1060,28 @@ function collectFields(ctx, schema, location, prefix, result, ancestry = new Set
 // refused: each would let fields past the list.
 function RequestFields(options) {
   const { allowedRequests, fields } = options;
+  checkOptionNames('request-fields', options, ['allowedRequests', 'fields']);
   if (!isOperationList(allowedRequests)) {
     throw new Error('contracts/request-fields: option allowedRequests must be a list of "METHOD path", empty if none');
   }
-  if (!isObject(fields) || !Object.entries(fields).every(([key, list]) => OPERATION_KEY.test(key) && Array.isArray(list)
-    && list.every((field) => typeof field === 'string' && REQUEST_FIELD.test(field)) && new Set(list).size === list.length)) {
+  if (!isObject(fields)) {
     throw new Error('contracts/request-fields: option fields must map "METHOD path" to lists of distinct fields, such as guest.first_name or room_types[].rooms');
+  }
+  for (const [key, list] of Object.entries(fields)) {
+    if (!OPERATION_KEY.test(key)) {
+      throw new Error(`contracts/request-fields: option fields: ${key} is not "METHOD path"`);
+    }
+    if (!Array.isArray(list)) {
+      throw new Error(`contracts/request-fields: option fields: the fields of ${key} are not a list`);
+    }
+    const wrong = list.find((field) => typeof field !== 'string' || !REQUEST_FIELD.test(field));
+    if (wrong !== undefined) {
+      throw new Error(`contracts/request-fields: option fields: ${JSON.stringify(wrong)} of ${key} is not a field such as guest.first_name or room_types[].rooms`);
+    }
+    const repeated = list.find((field, index) => list.indexOf(field) !== index);
+    if (repeated !== undefined) {
+      throw new Error(`contracts/request-fields: option fields: ${repeated} is repeated in the list of ${key}`);
+    }
   }
   const unlisted = allowedRequests.filter((key) => !Object.hasOwn(fields, key));
   if (unlisted.length > 0) {
@@ -1201,6 +1246,97 @@ function SubsetClosedObject() {
   };
 }
 
+// Keywords whose value is a schema, a list of schemas or a map of schemas, in
+// OpenAPI 3.1 and in draft-07. additionalProperties is not among them: its
+// true and false are the forms of OpenAPI 3.0, which the response validator
+// understands. A list under `dependencies` names properties, not schemas.
+const SCHEMA_KEYWORDS = ['items', 'not', 'if', 'then', 'else', 'contains', 'propertyNames', 'contentSchema',
+  'unevaluatedItems', 'unevaluatedProperties', 'additionalItems'];
+const SCHEMA_LIST_KEYWORDS = ['allOf', 'anyOf', 'oneOf', 'prefixItems', 'items'];
+const SCHEMA_MAP_KEYWORDS = ['properties', 'patternProperties', 'dependentSchemas', 'dependencies', '$defs',
+  'definitions'];
+
+// Calls `callback(value, location)` for every schema written in `schema` under
+// the keywords above, one level deep.
+function forEachChildSchema(schema, location, callback) {
+  for (const keyword of SCHEMA_KEYWORDS) {
+    if (schema[keyword] !== undefined && !Array.isArray(schema[keyword])) {
+      callback(schema[keyword], location.child([keyword]));
+    }
+  }
+  for (const keyword of SCHEMA_LIST_KEYWORDS) {
+    if (Array.isArray(schema[keyword])) {
+      schema[keyword].forEach((item, index) => callback(item, location.child([keyword, String(index)])));
+    }
+  }
+  for (const keyword of SCHEMA_MAP_KEYWORDS) {
+    if (isObject(schema[keyword])) {
+      for (const [name, item] of Object.entries(schema[keyword])) {
+        if (!Array.isArray(item)) {
+          callback(item, location.child([keyword, name]));
+        }
+      }
+    }
+  }
+}
+
+// No schema is the boolean schema true or false, except additionalProperties.
+// The walker gives no visitor a boolean written under `properties`, so no rule
+// of schemas sees it, and true admits any value: card_token: true passed every
+// rule. The built-in rule struct reports a boolean where the type of Redocly
+// is Schema, through $ref as well; this rule does not depend on those types.
+// It checks every place of a schema from its parent, through $ref: the
+// keywords of a schema, the schemas of components and the schema of the
+// `holders`, a map from a type of node to its keys that hold a schema.
+function booleanSchemaVisitors(holders) {
+  const check = (ctx, value, location) => {
+    const { node } = deref(ctx, value, location);
+    if (typeof node === 'boolean') {
+      ctx.report({
+        message: `Schema must be an object, not the boolean schema ${node}${isRef(value) ? ' through $ref' : ''}: no rule of schemas sees it, and true admits any value; only additionalProperties may be true or false`,
+        location,
+      });
+    }
+  };
+  const visitors = {
+    Schema(schema, ctx) {
+      if (isObject(schema)) {
+        forEachChildSchema(schema, ctx.location, (value, location) => check(ctx, value, location));
+      }
+    },
+    Components(components, ctx) {
+      if (isObject(components.schemas)) {
+        for (const [name, value] of Object.entries(components.schemas)) {
+          check(ctx, value, ctx.location.child(['schemas', name]));
+        }
+      }
+    },
+  };
+  for (const [type, keys] of Object.entries(holders)) {
+    visitors[type] = (node, ctx) => {
+      for (const key of keys.filter((item) => isObject(node) && node[item] !== undefined)) {
+        check(ctx, node[key], ctx.location.child([key]));
+      }
+    };
+  }
+  return visitors;
+}
+
+function SubsetBooleanSchema() {
+  return booleanSchemaVisitors({ MediaType: ['schema'], Parameter: ['schema'], Header: ['schema'] });
+}
+
+// The schemas of bindings other than Kafka are not checked: the contracts have
+// none, see the README of the contracts.
+function SubsetBooleanSchemaAsync() {
+  return booleanSchemaVisitors({
+    Message: ['payload', 'headers'],
+    MessageTrait: ['headers'],
+    KafkaMessageBinding: ['key'],
+    KafkaOperationBinding: ['groupId', 'clientId'],
+  });
+}
+
 // What keeps `pattern` from holding the whole string, or undefined if it holds
 // it. JSON Schema finds a pattern anywhere in the value: without ^ any head
 // passes, without the end any tail - an external id a/../x by its tail x, a
@@ -1219,10 +1355,8 @@ function SubsetClosedObject() {
 //    ends at the first ], while PCRE takes a ] right after [ or [^ as a literal
 //    and [:alpha:] inside a class as a POSIX class, and reads on, up to the ]
 //    of the end of the string.
-// The pattern is read by the rules of ECMA-262 with flag u: a backslash
-// escapes the next character, a class ends at the first unescaped ], and [
-// inside a class is a literal. Given 1) and 5), PCRE either finds the same
-// groups and classes or does not compile the pattern, as with [:a-z:], a POSIX
+// Given 1) and 5), PCRE either finds the same groups and classes as
+// scanPattern() or does not compile the pattern, as with [:a-z:], a POSIX
 // class outside a class for PCRE, and then league rejects every value.
 function patternProblem(pattern) {
   try {
@@ -1230,29 +1364,95 @@ function patternProblem(pattern) {
   } catch (error) {
     return `it does not compile as ECMA-262 with flag u, the way Redocly compiles it: ${error.message}`;
   }
+  const scan = scanPattern(pattern);
+  const problems = [];
+  if (!pattern.startsWith('^')) {
+    problems.push('it does not start with ^');
+  }
+  if (scan.lastGroup === undefined || scan.lastGroup.end !== pattern.length - 1
+    || pattern.slice(scan.lastGroup.start) !== PATTERN_END) {
+    problems.push(`it does not end with the group ${PATTERN_END} at the top level`);
+  }
+  if (scan.alternative) {
+    problems.push('it has | outside groups and classes');
+  }
+  if (scan.emptyClass) {
+    problems.push('it has [] or [^], which PCRE reads on past the ]');
+  }
+  if (scan.posixClass) {
+    problems.push('it has [: [. or [= inside a class, a POSIX class for PCRE');
+  }
+  return problems.length > 0 ? problems.join('; ') : undefined;
+}
+
+// The class of any character, the same in both engines.
+const ANY_CHARACTER = '[\\s\\S]';
+// Escapes that the two engines read differently, or that only one of them
+// compiles; \1 to \9 are listed apart.
+const DIVERGENT_ESCAPES = ['d', 'D', 'w', 'W', 's', 'S', 'v', 'b', 'B', 'u', 'k'];
+// The properties that \p may name: the letters and marks of PersonName. The
+// other properties differ by their names: \p{Latin} compiles only in PCRE.
+// L and M differ only by the version of Unicode: a letter newer than the
+// Unicode of PCRE passes the lint and fails in league, which lets nothing
+// extra through.
+const PORTABLE_PROPERTIES = ['L', 'M'];
+
+// Reads `pattern` by the rules of ECMA-262 with flag u: a backslash escapes
+// the next character, a class ends at the first unescaped ], and [ inside a
+// class is a literal. Returns what the rules of patterns need: the last group
+// at the top level, | outside groups and classes, an empty class [] or [^], a
+// POSIX class [: [. [= inside a class, and `divergent`, the constructs that
+// ECMA-262 and PCRE read differently, see portableProblem().
+function scanPattern(pattern) {
+  const scan = { lastGroup: undefined, alternative: false, emptyClass: false, posixClass: false, divergent: [] };
+  const divergent = (text) => {
+    if (!scan.divergent.includes(text)) {
+      scan.divergent.push(text);
+    }
+  };
   let depth = 0;
   let inClass = false;
   let groupStart = -1;
-  let lastGroup;
-  let alternative = false;
-  let emptyClass = false;
-  let posixClass = false;
   for (let i = 0; i < pattern.length; i += 1) {
     const c = pattern[i];
-    if (c === '\\') {
-      i += 1;
+    if (!inClass && pattern.startsWith(ANY_CHARACTER, i)) {
+      i += ANY_CHARACTER.length - 1;
+    } else if (c === '\\') {
+      const next = pattern[i + 1];
+      if (next === 'p' || next === 'P') {
+        const end = pattern[i + 2] === '{' ? pattern.indexOf('}', i + 3) : -1;
+        const name = end === -1 ? '' : pattern.slice(i + 3, end);
+        if (next === 'P' || !PORTABLE_PROPERTIES.includes(name)) {
+          divergent(`\\${next}{${name}}`);
+        }
+        i = end === -1 ? i + 1 : end;
+      } else {
+        if (DIVERGENT_ESCAPES.includes(next) || /^[1-9]$/.test(next ?? '')) {
+          divergent(`\\${next}`);
+        }
+        i += 1;
+      }
+    } else if (c === '$') {
+      divergent('$');
     } else if (inClass) {
       if (c === ']') {
         inClass = false;
       } else if (c === '[' && [':', '.', '='].includes(pattern[i + 1])) {
-        posixClass = true;
+        scan.posixClass = true;
       }
     } else if (c === '[') {
       inClass = true;
       if (pattern[i + 1] === ']' || (pattern[i + 1] === '^' && pattern[i + 2] === ']')) {
-        emptyClass = true;
+        scan.emptyClass = true;
       }
+    } else if (c === '.') {
+      divergent('. outside a class');
     } else if (c === '(') {
+      if (pattern.startsWith('(?<=', i) || pattern.startsWith('(?<!', i)) {
+        divergent('a lookbehind (?<= or (?<!');
+      } else if (pattern[i + 1] === '?' && /^[A-Za-z-]$/.test(pattern[i + 2] ?? '')) {
+        divergent('a group of modifiers (?i: (?m: (?s:');
+      }
       if (depth === 0) {
         groupStart = i;
       }
@@ -1260,30 +1460,44 @@ function patternProblem(pattern) {
     } else if (c === ')') {
       depth -= 1;
       if (depth === 0) {
-        lastGroup = { start: groupStart, end: i };
+        scan.lastGroup = { start: groupStart, end: i };
       }
     } else if (c === '|' && depth === 0) {
-      alternative = true;
+      scan.alternative = true;
     }
   }
-  const problems = [];
-  if (!pattern.startsWith('^')) {
-    problems.push('it does not start with ^');
+  return scan;
+}
+
+// The constructs of `pattern` that Redocly, ECMA-262 with flag u, and league,
+// PCRE with modifier u, read differently, or undefined if none. Both compile
+// them, so the anchors stay, but league would pass what the lint checked
+// otherwise, or reject every value:
+// - $: league builds a pattern without the modifier D, and $ passes a final
+//   line break;
+// - \d, \D, \w, \W, \b, \B: the modifier u turns on UCP in PHP, so \d takes
+//   the digits of every script and \b finds no boundary between a and a
+//   letter with an accent;
+// - . outside a class: PCRE passes CR and U+2028;
+// - \s and \S, except the class [\s\S] of any character: PCRE passes NEL as
+//   white space, ECMA-262 U+FEFF;
+// - \v: only PCRE passes LF;
+// - \u: PCRE does not compile it;
+// - \1 to \9 and \k<name>: a reference to a group that took part in no match
+//   passes in ECMA-262 only, so ^(?:(a)|b)\1 takes "b" in Redocly alone;
+// - a lookbehind (?<= or (?<!: PCRE2 does not compile one of unbounded length;
+// - \P and \p with a property other than L and M;
+// - a group of modifiers: not a divergence but a trap, (?i:[a-z]) takes the
+//   Kelvin sign U+212A in both, while its author expects ASCII.
+// A pattern that does not compile is left to contracts/pattern-anchored.
+function portableProblem(pattern) {
+  try {
+    new RegExp(pattern, 'u');
+  } catch (error) {
+    return undefined;
   }
-  if (lastGroup === undefined || lastGroup.end !== pattern.length - 1
-    || pattern.slice(lastGroup.start) !== PATTERN_END) {
-    problems.push(`it does not end with the group ${PATTERN_END} at the top level`);
-  }
-  if (alternative) {
-    problems.push('it has | outside groups and classes');
-  }
-  if (emptyClass) {
-    problems.push('it has [] or [^], which PCRE reads on past the ]');
-  }
-  if (posixClass) {
-    problems.push('it has [: [. or [= inside a class, a POSIX class for PCRE');
-  }
-  return problems.length > 0 ? problems.join('; ') : undefined;
+  const { divergent } = scanPattern(pattern);
+  return divergent.length > 0 ? divergent.join(', ') : undefined;
 }
 
 // Reports the pattern of `schema` if it does not hold the whole string, see
@@ -1321,9 +1535,9 @@ const HEADER_SCHEMA_POINTER = /(?:^#\/components|\/responses\/[^/]+)\/headers\/[
 //   parameters, request bodies, response bodies and headers, with their
 //   content - through $ref, and reports a schema of a header with the pattern
 //   used anywhere but as the schema itself of a Cache-Control response header.
-// The headers of `encoding` in multipart bodies are not followed: a schema
-// written in one of them is reported by the Schema visitor, but one taken from
-// a header through $ref would pass.
+// The headers of `encoding` are not followed: rule/subset-media-type refuses
+// encoding, and rule/subset-parameter-content and rule/subset-header-content
+// refuse the content followed here.
 function PatternAnchored() {
   return {
     Schema(schema, ctx) {
@@ -1390,6 +1604,26 @@ function PatternAnchoredAsync() {
   };
 }
 
+// Every pattern reads the same in ECMA-262 and in PCRE, see portableProblem().
+// The pattern of CacheControlNoStore has none of these constructs, so there is
+// no exception.
+function PatternPortable() {
+  return {
+    Schema(schema, ctx) {
+      if (!isObject(schema) || typeof schema.pattern !== 'string') {
+        return;
+      }
+      const problem = portableProblem(schema.pattern);
+      if (problem !== undefined) {
+        ctx.report({
+          message: `Pattern must not use what ECMA-262 and PCRE read differently: ${problem}. Write the end of the string as ${PATTERN_END}, any character as ${ANY_CHARACTER} and classes such as [0-9] explicitly`,
+          location: ctx.location.child(['pattern']),
+        });
+      }
+    },
+  };
+}
+
 // The form of $ref for the response validator: an external one starts with
 // ../ and has no ./ or .. after that; a local one in a YAML document points
 // into #/components/ if `localInComponents`; $defs are referenced only in
@@ -1450,6 +1684,7 @@ function RefFormAsync() {
 // personal data, of the booking token or of what EVENT_SENSITIVE_PARTS lists
 // is refused even if it is in a list.
 function EventFields(options) {
+  checkOptionNames('event-fields', options, ['envelopeFields', 'payloadFields']);
   const lists = { envelope: options.envelopeFields, payload: options.payloadFields };
   for (const [part, names] of Object.entries(lists)) {
     if (!Array.isArray(names) || !names.every((name) => typeof name === 'string' && FIELD_NAME.test(name))) {
@@ -1656,6 +1891,7 @@ function EventClosed() {
 // service (ADR-0002). Operations of event channels have neither traits, which
 // could change their bindings, nor a reply: an event has no reply.
 function EventAccess(options) {
+  checkOptionNames('event-access', options, ['services']);
   const services = options.services;
   if (!Array.isArray(services) || services.length === 0 || !services.every((name) => typeof name === 'string')) {
     throw new Error('contracts/event-access: option services must be a list of service names');
@@ -1765,14 +2001,18 @@ module.exports = function contractsPlugin() {
         'no-webhooks-callbacks': NoWebhooksCallbacks,
         'string-limit': StringLimit,
         'subset-closed-object': SubsetClosedObject,
+        'subset-boolean-schema': SubsetBooleanSchema,
         'pattern-anchored': PatternAnchored,
+        'pattern-portable': PatternPortable,
         'ref-form': RefForm,
         'ref-siblings': RefSiblings,
       },
       async3: {
         'string-limit': StringLimit,
         'subset-closed-object': SubsetClosedObject,
+        'subset-boolean-schema': SubsetBooleanSchemaAsync,
         'pattern-anchored': PatternAnchoredAsync,
+        'pattern-portable': PatternPortable,
         'ref-form': RefFormAsync,
         'ref-siblings': RefSiblings,
         'event-fields': EventFields,
@@ -1799,3 +2039,7 @@ module.exports = function contractsPlugin() {
     },
   };
 };
+
+// For bin/check.sh, which tests the dictionary of personal data on a table of
+// names. Redocly calls the exported function and ignores this property.
+module.exports.sensitiveKind = sensitiveKind;

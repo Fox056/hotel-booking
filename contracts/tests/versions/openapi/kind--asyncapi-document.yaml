@@ -1,0 +1,7 @@
+# Test of step 8 of bin/check.sh: an AsyncAPI document in a directory named
+# openapi, where only OpenAPI documents may lie. Its version is right for
+# AsyncAPI, and async3Rules run on it.
+asyncapi: 3.0.0
+info:
+  title: Test of the versions check, AsyncAPI in openapi/
+  version: 1.0.0

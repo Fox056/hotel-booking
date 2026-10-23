@@ -11,7 +11,11 @@
 #   4. Every violating fixture fails with its own rule, and no rule fires on it
 #      that the fixture does not declare.
 #   5. Every own rule - rule/* in redocly.yaml and contracts/* in
-#      lint/plugin.js - is enabled and has at least one fixture.
+#      lint/plugin.js - is enabled outside the apis of redocly.yaml and has at
+#      least one fixture. contracts/pattern-portable also runs on the table
+#      PORTABLE_CASES below, and the dictionary of personal data of the plugin
+#      on the table PII_NAME_CASES: a fixture per construct or word would be a
+#      document per line of a table.
 #   6. Every message of asyncapi/*.yaml has an example, and every example
 #      matches its schema. Redocly 2.60.0 does not check examples of AsyncAPI,
 #      so the step bundles each document with every $ref resolved, puts the
@@ -22,8 +26,43 @@
 #   7. The compatibility check of compat.sh, bin/compat.js, finds exactly
 #      what every pair of tests/compat/ expects, and every kind of finding
 #      has a pair.
+#   8. Redocly reads every document as OpenAPI 3.1.<n> or AsyncAPI 3.0.0: a
+#      document of another version passes the lint, and none of our rules
+#      runs on it. The documents are openapi/*.yaml, asyncapi/*.yaml and every
+#      *.yaml in tests/ outside tests/compat/ and the inputs of steps 8, 10 and
+#      11, which must cover all that steps 2-6 lint. A document in a directory
+#      named openapi is OpenAPI, one in a directory named asyncapi is
+#      AsyncAPI. Outside tests/compat/, tests/ holds only *.yaml, *.json in
+#      directories named schemas and expected.txt: a file in another form
+#      would escape every step. The step tests itself on
+#      tests/versions/<dir>/<reason>--<case>.yaml: each fails for <reason>,
+#      skipped (the rules did not run), version or kind.
+#   9. Every $defs entry of schemas/*.json is walked as a schema in the lint of
+#      a document of openapi/ or asyncapi/: the rules of schemas see no other
+#      entry. The root of a schema file holds only $schema, title, description
+#      and $defs with at least one entry; the open general form of Problem
+#      Details in the root of problem-details.v1.json is the one exception. The
+#      step tests itself on tests/definitions/, a layout of contracts/ whose
+#      findings must be exactly the lines of its expected.txt.
+#  10. The apis of redocly.yaml switch rules off for a document exactly as
+#      RULE_OVERRIDES below lists, and their entries have no keys but root and
+#      rules: the fixtures are linted with the root config and never see an
+#      override. A strict reader of the text reads the apis block, and what it
+#      does not know fails. The step tests itself on
+#      tests/overrides/<kind>--<case>.yaml, redocly.yaml with one fault of
+#      <kind>, form, key, root or override, and a line "# expect: <text>":
+#      a finding of <kind> must hold <text>, so one finding cannot stand in
+#      for another.
+#  11. A wrong option of a rule of the plugin stops the lint: a factory that
+#      throws fails the run, and only that keeps a wrong option from quietly
+#      weakening a rule. Every tests/options/<rule>--<case>.yaml is a config
+#      with one wrong option of contracts/<rule> and a line
+#      "# expect: <text>"; the lint of a document of the kind of the rule with
+#      it exits with 1 and prints the error of the rule with <text>. Every rule
+#      of the plugin with options has a test.
+# Steps 8 and 9 read one lint with the rules of bin/lint-probe.js.
 # Problems suppressed by an ignore file (.redocly.lint-ignore.yaml) fail
-# steps 2-4 and 6 as well: an ignore file must not make the run green.
+# steps 2-4, 6 and 8 as well: an ignore file must not make the run green.
 #
 # Fixtures are tests/rules/*.yaml:
 #   <prefix>--<rule>--<case>.yaml  violates rule <prefix>/<rule>, where <prefix>
@@ -78,17 +117,18 @@ if [[ "$step1" == ok ]]; then
 fi
 
 if ! command -v docker >/dev/null 2>&1; then
-  echo 'FAIL: docker is not found; steps 2-7 need it' >&2
+  echo 'FAIL: docker is not found; steps 2-11 need it' >&2
   exit 2
 fi
 
-# Steps 2-7 run in one container; the script below comes through stdin.
+# Steps 2-11 run in one container; the script below comes through stdin.
 run_in_image -e STEP1="$step1" -w /spec --entrypoint node -- - <<'NODE'
 'use strict';
 
 const fs = require('node:fs');
 const path = require('node:path');
 const { spawnSync } = require('node:child_process');
+const { isDeepStrictEqual } = require('node:util');
 
 const ROOT = '/spec';
 const ASYNCAPI = 'asyncapi';
@@ -143,11 +183,11 @@ function splitReports(text) {
   return reports;
 }
 
-// Lints `files` in one run. Returns one report per file, or undefined if
-// Redocly stopped early, for example on a YAML syntax error or a broken config;
-// then it prints the file it stopped at and why.
-function lint(files) {
-  const result = run(['lint', '--config', 'redocly.yaml', '--lint-config=error', '--format=json',
+// Lints `files` in one run with `config`. Returns one report per file, or
+// undefined if Redocly stopped early, for example on a YAML syntax error or a
+// broken config; then it prints the file it stopped at and why.
+function lint(files, config = 'redocly.yaml') {
+  const result = run(['lint', '--config', config, '--lint-config=error', '--format=json',
     '--max-problems=100000', ...files]);
   const reports = splitReports(result.stdout);
   if (reports.length === files.length) {
@@ -283,10 +323,152 @@ if (!step3) {
   failed.push('3. control fixtures');
 }
 
+// --- The apis of redocly.yaml ---
+// The rules that an api of redocly.yaml switches off for its document, with
+// the root of the api. The fixtures are linted with the root config and never
+// see an override, so each one is listed here, and the apis must match the
+// list exactly.
+const RULE_OVERRIDES = {
+  'common@v1': {
+    root: 'openapi/common.v1.yaml',
+    off: ['no-empty-servers', 'no-unused-components', 'security-defined'],
+  },
+  'channel-stub@v1': {
+    root: 'openapi/channel-stub.v1.yaml',
+    off: ['rule/public-response-set', 'contracts/error-media-types', 'contracts/unauthorized-shape'],
+  },
+};
+const OVERRIDE_KINDS = ['form', 'key', 'root', 'override'];
+const DOCUMENT_ROOT = /^(?:openapi|asyncapi)\/[^/]+\.yaml$/;
+const BLANK_LINE = /^ *(?:#.*)?$/;
+const RULE_NAME = '[a-z0-9]+(?:-[a-z0-9]+)*(?:\\/[a-z0-9]+(?:-[a-z0-9]+)*)?';
+
+// Reads the apis block of the config `text` strictly. YAML has many ways to
+// write one mapping, and what this reader does not know is a finding of kind
+// form, so the apis cannot hold what the reader does not see. A line at column
+// 0 is a plain key, apis is one of them exactly once, and its block holds only
+//   "  <api>:", "    root: <path>", "    rules:", "      <rule>: off",
+// comments and empty lines. A root is a document openapi/<name>.yaml or
+// asyncapi/<name>.yaml that exists, the root of one api: Redocly takes the
+// first api whose root resolves to the path of the document. Returns the
+// findings, each { kind, line, text }, and the indexes of the lines of the
+// block.
+function readApis(text) {
+  const findings = [];
+  const add = (kind, index, message) => findings.push({ kind, line: index === undefined ? undefined : index + 1, text: message });
+  const lines = text.split('\n');
+  let start = -1;
+  let count = 0;
+  lines.forEach((line, index) => {
+    if (line.includes('\r')) {
+      add('form', index, 'a carriage return: the lines of redocly.yaml end with LF alone');
+    } else if (!BLANK_LINE.test(line) && !line.startsWith(' ')) {
+      const key = /^([a-z][A-Za-z0-9_]*):(.*)$/.exec(line);
+      if (key === null) {
+        add('form', index, `"${line}" is not a plain key at column 0`);
+      } else if (key[1] === 'apis') {
+        count += 1;
+        start = index;
+        if (!BLANK_LINE.test(key[2])) {
+          add('form', index, 'apis is not a block: its entries go on the lines below it');
+        }
+      }
+    }
+  });
+  if (count !== 1) {
+    add('form', undefined, `the key apis is at column 0 ${count} times, not once`);
+  }
+  const block = new Set();
+  const apis = new Map();
+  let api;
+  let inRules = false;
+  // Lines deeper than this belong to a key that is already reported.
+  let skipBelow;
+  for (let index = start + 1; start !== -1 && index < lines.length; index += 1) {
+    const line = lines[index];
+    if (!BLANK_LINE.test(line) && !line.startsWith(' ')) {
+      break;
+    }
+    block.add(index);
+    const indent = line.length - line.trimStart().length;
+    if (BLANK_LINE.test(line) || line.includes('\r') || (skipBelow !== undefined && indent > skipBelow)) {
+      continue;
+    }
+    skipBelow = undefined;
+    let match;
+    if ((match = /^  ([A-Za-z0-9_.@-]+): *$/.exec(line)) !== null) {
+      if (apis.has(match[1])) {
+        add('form', index, `api ${match[1]} is written twice`);
+      }
+      api = { name: match[1], root: undefined, rules: [], index };
+      apis.set(match[1], api);
+      inRules = false;
+    } else if (api !== undefined && (match = /^    root: (\S+) *$/.exec(line)) !== null) {
+      api.root = match[1];
+      inRules = false;
+    } else if (api !== undefined && /^    rules: *$/.test(line)) {
+      inRules = true;
+    } else if (api !== undefined && (match = /^    ([A-Za-z0-9_$-]+):/.exec(line)) !== null
+      && !['root', 'rules'].includes(match[1])) {
+      add('key', index, `api ${api.name} has the key ${match[1]}: an entry of apis has only root and rules`);
+      inRules = false;
+      skipBelow = indent;
+    } else if (api !== undefined && inRules && indent >= 6) {
+      match = new RegExp(`^      (${RULE_NAME}): (\\S+) *$`).exec(line);
+      if (match === null) {
+        add('override', index, `"${line.trim()}" in the rules of api ${api.name}: an override is a line "<rule>: off", without options`);
+        skipBelow = indent;
+      } else if (match[2] !== 'off') {
+        add('override', index, `${match[1]}: ${match[2]} in the rules of api ${api.name}: an override only switches a rule off`);
+      } else {
+        api.rules.push(match[1]);
+      }
+    } else {
+      add('form', index, `"${line.trim()}" is not a line of apis that this check reads`);
+    }
+  }
+  const roots = new Map();
+  for (const entry of apis.values()) {
+    if (entry.root === undefined) {
+      add('root', entry.index, `api ${entry.name} has no root`);
+    } else if (!DOCUMENT_ROOT.test(entry.root) || !fs.existsSync(path.join(ROOT, entry.root))) {
+      add('root', entry.index, `api ${entry.name}: root ${entry.root} is not a document openapi/<name>.yaml or asyncapi/<name>.yaml that exists`);
+    } else if (roots.has(entry.root)) {
+      add('root', entry.index, `api ${entry.name}: ${entry.root} is the root of api ${roots.get(entry.root)} too`);
+    } else {
+      roots.set(entry.root, entry.name);
+    }
+    const pinned = Object.hasOwn(RULE_OVERRIDES, entry.name) ? RULE_OVERRIDES[entry.name] : undefined;
+    for (const rule of entry.rules.filter((item) => pinned === undefined || !pinned.off.includes(item))) {
+      add('override', entry.index, `api ${entry.name} switches off ${rule}, which RULE_OVERRIDES of check.sh does not list`);
+    }
+  }
+  for (const [name, pinned] of Object.entries(RULE_OVERRIDES)) {
+    const entry = apis.get(name);
+    if (entry === undefined) {
+      add('override', undefined, `api ${name}, whose overrides RULE_OVERRIDES of check.sh lists, is missing`);
+      continue;
+    }
+    if (entry.root !== pinned.root) {
+      add('root', entry.index, `api ${name} has the root ${entry.root}, while RULE_OVERRIDES of check.sh lists its overrides for ${pinned.root}`);
+    }
+    for (const rule of pinned.off.filter((item) => !entry.rules.includes(item))) {
+      add('override', entry.index, `api ${name} does not switch off ${rule}, which RULE_OVERRIDES of check.sh lists`);
+    }
+  }
+  return { findings, block };
+}
+
 // --- Rules ---
 const configText = fs.readFileSync(path.join(ROOT, 'redocly.yaml'), 'utf8');
-const configured = new Set([...configText.matchAll(/^\s*((?:rule|contracts)\/[a-z0-9]+(?:-[a-z0-9]+)*):/gm)]
+const apisReading = readApis(configText);
+// The lines outside the apis: an override there switches a rule off for one
+// document and never enables a rule.
+const rootConfig = configText.split('\n').filter((line, index) => !apisReading.block.has(index)).join('\n');
+const configured = new Set([...rootConfig.matchAll(/^\s*((?:rule|contracts)\/[a-z0-9]+(?:-[a-z0-9]+)*):/gm)]
   .map((match) => match[1]));
+// Rules of the plugin written as a block: with settings besides the severity.
+const blockRules = [...rootConfig.matchAll(/^ {2}(contracts\/[a-z0-9]+(?:-[a-z0-9]+)*): *$/gm)].map((match) => match[1]);
 const plugin = require(path.join(ROOT, 'lint/plugin.js'))();
 // A rule of the plugin may be defined for OpenAPI and AsyncAPI under one name.
 const pluginRules = [...new Set(Object.values(plugin.rules).flatMap((rules) => Object.keys(rules)))]
@@ -345,6 +527,10 @@ if (!step4) {
 // --- Step 5 ---
 section('5. Rule coverage');
 let step5 = true;
+if (apisReading.findings.some((finding) => finding.kind === 'form')) {
+  console.log('FAIL: the apis block of redocly.yaml does not read, see step 10, so the rules enabled outside it are unknown');
+  step5 = false;
+}
 for (const rule of pluginRules.filter((item) => !configured.has(item))) {
   console.log(`FAIL: plugin rule ${rule} is not enabled in redocly.yaml`);
   step5 = false;
@@ -360,8 +546,71 @@ for (const rule of ownRules) {
     step5 = false;
   }
 }
+// Patterns that contracts/pattern-portable refuses, true, or passes, false:
+// every construct it refuses, each spelling of it, and the forms that read
+// the same in both engines next to them.
+const BACKSLASH = '\\';
+const PORTABLE_CASES = [
+  ['^a.b(?![\\s\\S])', true], ['^[.]{1,3}(?![\\s\\S])', false],
+  ['^a\\sb(?![\\s\\S])', true], ['^a\\Sb(?![\\s\\S])', true], ['^[\\S\\s](?![\\s\\S])', true],
+  ['^a[\\s\\S]b(?![\\s\\S])', false],
+  ['^a\\vb(?![\\s\\S])', true], ['^a\\b(?![\\s\\S])', true], ['^a\\B(?![\\s\\S])', true],
+  [`^${BACKSLASH}u0041(?![\\s\\S])`, true], [`^${BACKSLASH}u{41}(?![\\s\\S])`, true],
+  ['^(?i:[a-z])(?![\\s\\S])', true], ['^(?m:[a-z])(?![\\s\\S])', true], ['^(?s:[a-z])(?![\\s\\S])', true],
+  ['^(?-i:[a-z])(?![\\s\\S])', true],
+  ['^(?:(a)|b)\\1(?![\\s\\S])', true], ['^(?:(?<x>a)|b)\\k<x>(?![\\s\\S])', true], ['^(?<x>a)(?![\\s\\S])', false],
+  ['^[a-z](?<=a)(?![\\s\\S])', true], ['^[a-z](?<!b)(?![\\s\\S])', true], ['^(?=[a-z])[a-z0-9](?![\\s\\S])', false],
+  ['^\\p{L}\\p{M}(?![\\s\\S])', false], ['^\\p{Lu}(?![\\s\\S])', true], ['^\\P{L}(?![\\s\\S])', true],
+  ['^[a-z]+$', true], ['^[$][a-z](?![\\s\\S])', true], ['^\\$[a-z](?![\\s\\S])', false],
+  ['^\\d(?![\\s\\S])', true], ['^\\D(?![\\s\\S])', true], ['^[\\w](?![\\s\\S])', true], ['^\\W(?![\\s\\S])', true],
+  ['^[0-9a-f]{32}(?![\\s\\S])', false],
+];
+const portable = plugin.rules.oas3['pattern-portable']();
+for (const [pattern, refused] of PORTABLE_CASES) {
+  const reports = [];
+  portable.Schema({ type: 'string', maxLength: 10, pattern }, {
+    location: { child: () => undefined },
+    report: (problem) => reports.push(problem),
+  });
+  if ((reports.length > 0) !== refused) {
+    console.log(`FAIL: contracts/pattern-portable ${refused ? 'passes' : 'refuses'} the pattern ${pattern}`);
+    step5 = false;
+  }
+}
+// Names and what the dictionary of personal data takes them for: every word of
+// the dictionary, written as a part, a word or the start of a name, and names
+// that hold a short word inside a longer one and are no personal data.
+const PII = 'personal data';
+const PII_NAME_CASES = [
+  ['email', PII], ['phone', PII], ['first_name', PII], ['last_name', PII], ['middle_name', PII], ['surname', PII],
+  ['full_name', PII], ['patronymic', PII], ['passport_number', PII], ['birth_date', PII], ['birthday', PII],
+  ['date_of_birth', PII], ['card_token', PII], ['card_number', PII], ['cardholder_name', PII],
+  ['billing_address', PII], ['snils', PII], ['contact_person', PII], ['comments', PII], ['remarks', PII],
+  ['given_name', PII], ['family_name', PII], ['mobile_number', PII], ['msisdn', PII], ['special_request', PII],
+  ['special_requests', PII], ['tax_id', PII],
+  ['card_pan', PII], ['PAN', PII], ['payer_inn', PII], ['X-Payer-INN', PII], ['booking_note', PII], ['notes', PII],
+  ['dob', PII], ['guest_count', PII], ['lead_guest_name', PII], ['primary_guest', PII],
+  ['booking_token', 'booking token'],
+  ['inner', undefined], ['dinner_included', undefined], ['company', undefined], ['time_span', undefined],
+  ['refund_not_executed', undefined], ['footnote', undefined], ['adobe_id', undefined], ['syntax_ok', undefined],
+  ['guests', undefined], ['number_of_guests', undefined], ['placeholder', undefined], ['room_type_id', undefined],
+];
+const { sensitiveKind } = require(path.join(ROOT, 'lint/plugin.js'));
+if (typeof sensitiveKind !== 'function') {
+  console.log('FAIL: lint/plugin.js exports no sensitiveKind, the dictionary of personal data');
+  step5 = false;
+}
+for (const [name, kind] of typeof sensitiveKind === 'function' ? PII_NAME_CASES : []) {
+  const found = sensitiveKind(name);
+  if (found !== kind) {
+    console.log(`FAIL: the dictionary of personal data takes ${name} for ${found ?? 'no personal data'}, not ${kind ?? 'no personal data'}`);
+    step5 = false;
+  }
+}
 if (step5) {
   console.log(`ok: each of ${ownRules.length} own rules has a fixture`);
+  console.log(`ok: contracts/pattern-portable decides each of ${PORTABLE_CASES.length} patterns of its table as expected`);
+  console.log(`ok: the dictionary of personal data decides each of ${PII_NAME_CASES.length} names of its table as expected`);
 } else {
   failed.push('5. rule coverage');
 }
@@ -624,11 +873,375 @@ if (!step7) {
   failed.push('7. tests of the compatibility check');
 }
 
+// --- Steps 8 and 9: one lint with the probe ---
+const VERSION_TESTS = 'tests/versions';
+const DEFINITION_TESTS = 'tests/definitions';
+const OVERRIDE_TESTS = 'tests/overrides';
+const OPTION_TESTS = 'tests/options';
+const PROBE_CONFIG = '/tmp/probe-redocly.yaml';
+// The plugin of the contracts brings its extension of the types, so the walk
+// is that of the real lint; none of its rules is switched on here.
+fs.writeFileSync(PROBE_CONFIG, ['extends: []',
+  `plugins: [${path.join(ROOT, 'lint/plugin.js')}, ${path.join(ROOT, 'bin/lint-probe.js')}]`, 'telemetry: off',
+  'oas3_1Rules:', '  probe/version: error', '  probe/schemas: error',
+  'async3Rules:', '  probe/version: error', '  probe/schemas: error', ''].join('\n'));
+
+// The files under `dir` of ROOT, at any depth, as paths from ROOT.
+function listFiles(dir) {
+  if (!isDirectory(path.join(ROOT, dir))) {
+    return [];
+  }
+  return fs.readdirSync(path.join(ROOT, dir)).sort().flatMap((name) => (
+    isDirectory(path.join(ROOT, dir, name)) ? listFiles(`${dir}/${name}`) : [`${dir}/${name}`]));
+}
+
+const testFiles = listFiles('tests').filter((file) => !file.startsWith(`${COMPAT_TESTS}/`));
+const inputs = [VERSION_TESTS, OVERRIDE_TESTS, OPTION_TESTS];
+const probed = [...documents,
+  ...testFiles.filter((file) => file.endsWith('.yaml') && !inputs.some((dir) => file.startsWith(`${dir}/`)))];
+const versionTests = testFiles.filter((file) => file.startsWith(`${VERSION_TESTS}/`) && file.endsWith('.yaml'));
+const probeFiles = [...probed, ...versionTests];
+
+// --- Step 8 ---
+section('8. Versions of the documents');
+const probeReports = lint(probeFiles, PROBE_CONFIG);
+const probeByFile = new Map(probeReports === undefined ? [] : probeFiles.map((file, index) => [file, probeReports[index]]));
+let step8 = probeReports !== undefined;
+const OPENAPI_VERSION = /^3\.1\.(?:0|[1-9][0-9]*)$/;
+const ASYNCAPI_VERSION = '3.0.0';
+const VERSION_REASONS = ['skipped', 'version', 'kind'];
+
+// What keeps the rules from checking the probed document `file`, as
+// { reason, text }, or undefined. The reason is skipped: the rules of
+// oas3_1Rules and async3Rules did not run on it; version: they ran, but the
+// version is not 3.1.<n> or 3.0.0; kind: a directory named openapi holds
+// OpenAPI, one named asyncapi AsyncAPI, and the document is the other kind.
+function versionProblem(file, report) {
+  const found = report.problems.filter((problem) => problem.ruleId === 'probe/version');
+  if (found.length !== 1) {
+    return { reason: 'skipped', text: 'Redocly did not run the rules of oas3_1Rules and async3Rules on it: it reads neither as OpenAPI 3.1 nor as AsyncAPI 3' };
+  }
+  const { openapi, asyncapi } = JSON.parse(found[0].message);
+  const kind = typeof openapi === 'string' ? 'openapi' : 'asyncapi';
+  const parent = path.basename(path.dirname(file));
+  if (DOCUMENT_DIRS.includes(parent) && parent !== kind) {
+    return { reason: 'kind', text: `it is ${kind}, while a directory named ${parent} holds ${parent} documents` };
+  }
+  const version = kind === 'openapi' ? openapi : asyncapi;
+  if (kind === 'openapi' ? !OPENAPI_VERSION.test(version) : version !== ASYNCAPI_VERSION) {
+    return { reason: 'version', text: `${kind}: ${version}, while the documents are openapi: 3.1.<n> and asyncapi: ${ASYNCAPI_VERSION}` };
+  }
+  return undefined;
+}
+
+// What steps 2-6 lint must be among the probed documents: a wrong selection
+// would leave them unchecked, and this step green.
+const lintedElsewhere = [...documents, ...control.map((file) => `${FIXTURES}/${file}`),
+  ...violating.map((fixture) => `${FIXTURES}/${fixture.file}`),
+  ...exampleTests.map((file) => `${EXAMPLE_TESTS}/${file}`),
+  ...listFiles('tests/openapi').filter((file) => file.endsWith('.yaml'))];
+for (const file of lintedElsewhere.filter((item) => !probed.includes(item))) {
+  console.log(`FAIL: ${file}: another step lints it, but this step does not check its version`);
+  step8 = false;
+}
+// Whether a file of tests/ outside tests/compat/ has a form that a step reads.
+function isTestFileForm(file) {
+  return file.endsWith('.yaml') || (file.endsWith('.json') && path.basename(path.dirname(file)) === 'schemas')
+    || path.basename(file) === 'expected.txt';
+}
+for (const file of testFiles.filter((item) => !isTestFileForm(item))) {
+  console.log(`FAIL: ${file}: outside ${COMPAT_TESTS}/, tests/ holds only *.yaml, *.json in directories named schemas and expected.txt; no step reads a file in another form`);
+  step8 = false;
+}
+// A file of another form would fail the real run, so the check is tested on
+// names alone.
+const formSamples = { 'tests/rules/rule--x--y.json': false, 'tests/rules/valid--x.yml': false,
+  'tests/definitions/schemas/x.txt': false, 'tests/schemas/x.json': true, 'tests/definitions/expected.txt': true };
+for (const [file, expected] of Object.entries(formSamples)) {
+  if (isTestFileForm(file) !== expected) {
+    console.log(`FAIL: the check of the forms of tests/ ${expected ? 'refuses' : 'takes'} ${file}`);
+    step8 = false;
+  }
+}
+let versionChecked = 0;
+for (const file of probed) {
+  const report = probeByFile.get(file);
+  if (report === undefined) {
+    continue;
+  }
+  versionChecked += 1;
+  const problem = versionProblem(file, report);
+  if (problem !== undefined) {
+    console.log(`FAIL: ${file}: ${problem.text}`);
+    step8 = false;
+  }
+  if (report.totals.ignored > 0) {
+    console.log(`FAIL: ${file}: ${report.totals.ignored} problems of the probe ignored by an ignore file`);
+    step8 = false;
+  }
+}
+if (step8) {
+  console.log(`ok: ${versionChecked} documents are openapi: 3.1.<n> or asyncapi: ${ASYNCAPI_VERSION}, each in its directory`);
+}
+// The step tests itself: every document of tests/versions fails for the
+// reason in its name.
+const REASON_NAME = new RegExp(`^(${VERSION_REASONS.join('|')})--[a-z0-9]+(?:-[a-z0-9]+)*\\.yaml$`);
+if (versionTests.length === 0) {
+  console.log(`FAIL: ${VERSION_TESTS}/ has no test of this step`);
+  step8 = false;
+}
+const testedReasons = new Set();
+for (const file of versionTests) {
+  const name = REASON_NAME.exec(path.basename(file));
+  const report = probeByFile.get(file);
+  const problem = report === undefined ? undefined : versionProblem(file, report);
+  if (name === null) {
+    console.log(`FAIL: ${file}: the name is not <reason>--<case>.yaml, where <reason> is ${VERSION_REASONS.join(', ')}`);
+    step8 = false;
+  } else if (problem !== undefined && problem.reason === name[1]) {
+    console.log(`ok: ${file}: ${problem.text}`);
+    testedReasons.add(name[1]);
+  } else if (report !== undefined) {
+    console.log(`FAIL: ${file}: expected ${name[1]}, found ${problem === undefined ? 'nothing' : `${problem.reason}: ${problem.text}`}`);
+    step8 = false;
+  }
+}
+for (const reason of VERSION_REASONS.filter((item) => !testedReasons.has(item))) {
+  console.log(`FAIL: no test of ${VERSION_TESTS}/ fails for ${reason}`);
+  step8 = false;
+}
+if (!step8) {
+  failed.push('8. versions of the documents');
+}
+
+// --- Step 9 ---
+section('9. Entries of $defs in schemas/*.json');
+let step9 = probeReports !== undefined;
+// The root of a schema file holds the entries, and the walker never visits
+// it: no document refers to a root. The one root with a schema is the open
+// general form of Problem Details, whose fields change only by a breaking
+// change, which compat.sh reports.
+const ROOT_KEYS = ['$schema', 'title', 'description', '$defs'];
+const ROOT_SCHEMAS = ['schemas/problem-details.v1.json'];
+
+// The findings of this step in the layout `dir` of contracts/, '' for
+// contracts/ itself, each a line "unwalked <file>#/$defs/<name>",
+// "root <file>" or "empty <file>", with paths from `dir`. An entry is walked
+// only if the probe saw it in the lint of a document of `dir`: openapi/*.yaml
+// or asyncapi/*.yaml. `rootSchemas` lists the files whose root may hold a
+// schema.
+function definitionFindings(dir, rootSchemas) {
+  const prefix = dir === '' ? '' : `${dir}/`;
+  const walked = new Set();
+  for (const file of DOCUMENT_DIRS.flatMap((sub) => listFiles(`${prefix}${sub}`))) {
+    const report = probeByFile.get(file);
+    for (const problem of report === undefined ? [] : report.problems) {
+      if (problem.ruleId === 'probe/schemas') {
+        walked.add(problem.message.replace(`${ROOT}/`, ''));
+      }
+    }
+  }
+  const findings = [];
+  let entries = 0;
+  for (const file of listFiles(`${prefix}schemas`).filter((item) => item.endsWith('.json'))) {
+    const local = file.slice(prefix.length);
+    let schema;
+    try {
+      schema = JSON.parse(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+    } catch (error) {
+      findings.push(`unreadable ${local}`);
+      continue;
+    }
+    const isMap = (value) => value !== null && typeof value === 'object' && !Array.isArray(value);
+    if (!isMap(schema) || (Object.keys(schema).some((key) => !ROOT_KEYS.includes(key)) && !rootSchemas.includes(local))) {
+      findings.push(`root ${local}`);
+    }
+    const names = isMap(schema) && isMap(schema.$defs) ? Object.keys(schema.$defs) : [];
+    if (names.length === 0) {
+      findings.push(`empty ${local}`);
+    }
+    for (const name of names) {
+      const pointer = `#/$defs/${name.replace(/~/g, '~0').replace(/\//g, '~1')}`;
+      entries += 1;
+      if (!walked.has(`${file}${pointer}`)) {
+        findings.push(`unwalked ${local}${pointer}`);
+      }
+    }
+  }
+  return { findings, entries };
+}
+
+const FINDING_TEXT = {
+  unwalked: 'no rule of schemas sees this entry: the lint of no document of openapi/ or asyncapi/ walks it',
+  root: `the root of a schema file holds only ${ROOT_KEYS.join(', ')}: the walker never visits a root, and no rule sees a schema there`,
+  empty: 'the file has no entry of $defs: a document refers to entries, so nothing of it is checked',
+  unreadable: 'the file is not JSON',
+};
+if (step9) {
+  const own = definitionFindings('', ROOT_SCHEMAS);
+  for (const finding of own.findings) {
+    console.log(`FAIL: ${finding.split(' ')[1]}: ${FINDING_TEXT[finding.split(' ')[0]]}`);
+    step9 = false;
+  }
+  if (own.findings.length === 0) {
+    console.log(`ok: each of ${own.entries} entries is walked; roots with a schema: ${ROOT_SCHEMAS.join(', ')}`);
+  }
+  // The step tests itself on tests/definitions: its findings are the lines of
+  // expected.txt.
+  const expectedFile = path.join(ROOT, DEFINITION_TESTS, 'expected.txt');
+  const expected = fs.existsSync(expectedFile)
+    ? fs.readFileSync(expectedFile, 'utf8').split('\n').map((line) => line.trim()).filter((line) => line !== '' && !line.startsWith('#'))
+    : [];
+  const test = definitionFindings(DEFINITION_TESTS, []);
+  const reasons = [
+    ...(expected.length === 0 ? [`${DEFINITION_TESTS}/expected.txt is missing or has no lines`] : []),
+    ...without(expected, test.findings).map((line) => `missing: ${line}`),
+    ...without(test.findings, expected).map((line) => `unexpected: ${line}`),
+  ];
+  // A file listed as a root with a schema loses its finding root, and only it.
+  const rootLine = expected.find((line) => line.startsWith('root '));
+  if (rootLine === undefined) {
+    reasons.push('expected.txt has no line "root <file>"');
+  } else {
+    const excepted = definitionFindings(DEFINITION_TESTS, [rootLine.slice('root '.length)]).findings;
+    if (!isDeepStrictEqual([...excepted].sort(), without(expected, [rootLine]).sort())) {
+      reasons.push(`with ${rootLine.slice('root '.length)} listed as a root with a schema, the findings are not the others: ${excepted.join(', ')}`);
+    }
+  }
+  if (reasons.length === 0) {
+    console.log(`ok: ${DEFINITION_TESTS}: ${expected.length} expected findings`);
+  } else {
+    console.log(`FAIL: ${DEFINITION_TESTS}`);
+    reasons.forEach((text) => console.log(`  ${text}`));
+    step9 = false;
+  }
+} else {
+  console.log('FAIL: the probe did not lint the documents, see step 8');
+}
+if (!step9) {
+  failed.push('9. entries of $defs');
+}
+
+// --- Step 10 ---
+section('10. Overrides of rules in the apis of redocly.yaml');
+let step10 = true;
+for (const finding of apisReading.findings) {
+  console.log(`FAIL: redocly.yaml${finding.line === undefined ? '' : `:${finding.line}`}: ${finding.kind}: ${finding.text}`);
+  step10 = false;
+}
+if (step10) {
+  console.log(`ok: the apis switch off only what RULE_OVERRIDES lists: ${Object.entries(RULE_OVERRIDES).map(([api, entry]) => `${entry.off.length} rules for ${api}`).join(', ')}`);
+}
+// The step tests itself: every config of tests/overrides has a finding of
+// the kind in its name with the text of its line "# expect: <text>", and so
+// does redocly.yaml with CRLF line endings.
+const KIND_NAME = new RegExp(`^(${OVERRIDE_KINDS.join('|')})--[a-z0-9]+(?:-[a-z0-9]+)*\\.yaml$`);
+const EXPECT_LINE = /^#\s*expect:\s*(.+?)\s*$/m;
+const overrideCases = [
+  ...listFiles(OVERRIDE_TESTS).map((file) => {
+    const text = fs.readFileSync(path.join(ROOT, file), 'utf8');
+    const expect = EXPECT_LINE.exec(text);
+    return { name: file, match: KIND_NAME.exec(path.basename(file)), expect: expect === null ? undefined : expect[1], text };
+  }),
+  { name: 'redocly.yaml with CRLF line endings', match: [undefined, 'form'], expect: 'a carriage return',
+    text: configText.replace(/\n/g, '\r\n') },
+];
+if (overrideCases.length === 1) {
+  console.log(`FAIL: ${OVERRIDE_TESTS}/ has no test of this step`);
+  step10 = false;
+}
+const testedOverrideKinds = new Set();
+for (const item of overrideCases) {
+  if (item.match === null) {
+    console.log(`FAIL: ${item.name}: the name is not <kind>--<case>.yaml, where <kind> is ${OVERRIDE_KINDS.join(', ')}`);
+    step10 = false;
+    continue;
+  }
+  if (item.expect === undefined) {
+    console.log(`FAIL: ${item.name}: there is no line "# expect: <text>"`);
+    step10 = false;
+    continue;
+  }
+  const kind = item.match[1];
+  const findings = readApis(item.text).findings;
+  const own = findings.find((finding) => finding.kind === kind && finding.text.includes(item.expect));
+  if (own === undefined) {
+    console.log(`FAIL: ${item.name}: expected a finding of kind ${kind} with "${item.expect}", found ${findings.map((finding) => `${finding.kind}: ${finding.text}`).join('; ') || 'none'}`);
+    step10 = false;
+  } else {
+    console.log(`ok: ${item.name}: ${kind}: ${own.text}`);
+    testedOverrideKinds.add(kind);
+  }
+}
+for (const kind of OVERRIDE_KINDS.filter((item) => !testedOverrideKinds.has(item))) {
+  console.log(`FAIL: no test of ${OVERRIDE_TESTS}/ has a finding of kind ${kind}`);
+  step10 = false;
+}
+if (!step10) {
+  failed.push('10. overrides of rules');
+}
+
+// --- Step 11 ---
+section('11. Wrong options of the rules of the plugin');
+let step11 = true;
+// The document that every kind of rules of the plugin is linted on.
+const OPTION_DOCUMENTS = { oas3: `${FIXTURES}/valid--public.yaml`, async3: `${FIXTURES}/valid--events.yaml` };
+const OPTION_TEST_NAME = /^([a-z0-9]+(?:-[a-z0-9]+)*)--[a-z0-9]+(?:-[a-z0-9]+)*\.yaml$/;
+// A rule of the plugin has options if its factory takes a parameter or
+// redocly.yaml gives it settings besides the severity, as a block.
+const optionRules = [...new Set([
+  ...Object.values(plugin.rules).flatMap((rules) => Object.entries(rules)
+    .filter(([, factory]) => factory.length > 0).map(([name]) => `${plugin.id}/${name}`)),
+  ...blockRules])].sort();
+const optionTests = listFiles(OPTION_TESTS);
+if (optionTests.length === 0) {
+  console.log(`FAIL: ${OPTION_TESTS}/ has no test of this step`);
+  step11 = false;
+}
+const testedOptionRules = new Set();
+for (const file of optionTests) {
+  const name = OPTION_TEST_NAME.exec(path.basename(file));
+  const rule = name === null ? undefined : `${plugin.id}/${name[1]}`;
+  const expect = /^#\s*expect:\s*(.+?)\s*$/m.exec(fs.readFileSync(path.join(ROOT, file), 'utf8'));
+  const kinds = rule === undefined ? [] : Object.keys(plugin.rules).filter((kind) => Object.hasOwn(plugin.rules[kind], name[1]));
+  const reasons = [];
+  if (rule === undefined || kinds.length === 0) {
+    reasons.push('the name is not <rule>--<case>.yaml with a rule of the plugin');
+  }
+  if (expect === null) {
+    reasons.push('there is no line "# expect: <text>"');
+  }
+  for (const kind of reasons.length > 0 ? [] : kinds) {
+    const result = run(['lint', '--config', file, '--format=json', OPTION_DOCUMENTS[kind]]);
+    const output = `${result.stdout}\n${result.stderr}`.replace(/\s+/g, ' ');
+    if (result.status !== 1 || splitReports(result.stdout).length > 0 || !output.includes(`${rule}: `)
+      || !output.includes(expect[1])) {
+      reasons.push(`the lint of ${OPTION_DOCUMENTS[kind]} exited with ${result.status} and did not stop on the error of ${rule} with "${expect[1]}": ${output.trim().slice(0, 300)}`);
+    }
+  }
+  if (reasons.length === 0) {
+    console.log(`ok: ${file}: ${expect[1]}`);
+    testedOptionRules.add(rule);
+  } else {
+    console.log(`FAIL: ${file}: ${reasons.join('; ')}`);
+    step11 = false;
+  }
+}
+for (const rule of optionRules.filter((item) => !testedOptionRules.has(item))) {
+  console.log(`FAIL: ${rule} has options and no test in ${OPTION_TESTS}/`);
+  step11 = false;
+}
+if (!step11) {
+  failed.push('11. wrong options of the rules');
+}
+
 // --- Summary ---
 section('Summary');
 console.log(`fixtures: ${control.length} control, ${violating.length} violating`);
 console.log(`own rules: ${ownRules.length} (${configurableRules.length} configurable, ${pluginRules.length} plugin)`);
 console.log(`pairs of the compatibility check: ${pairs.length}`);
+console.log(`documents with a checked version: ${versionChecked}`);
+console.log(`self-tests: ${versionTests.length} of versions, ${overrideCases.length} of overrides, ${optionTests.length} of options`);
 console.log(failed.length === 0 ? 'all steps passed' : `failed: ${failed.join('; ')}`);
 process.exitCode = failed.length === 0 ? 0 : 1;
 NODE

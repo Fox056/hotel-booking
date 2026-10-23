@@ -1,0 +1,5 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "empty.v1",
+  "description": "Test of step 9 of bin/check.sh: a file without entries in $defs, so nothing in it is reached or checked."
+}

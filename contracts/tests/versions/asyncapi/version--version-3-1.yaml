@@ -1,0 +1,6 @@
+# Test of step 8 of bin/check.sh: AsyncAPI 3.1.0. Redocly runs async3Rules on
+# the document, but only 3.0.0 is allowed.
+asyncapi: 3.1.0
+info:
+  title: Test of the versions check, AsyncAPI 3.1
+  version: 1.0.0

@@ -1,7 +1,10 @@
-# A pattern with \d, which matches digits of any script in PCRE with the u modifier.
+# The schema of the body of a response is false. The rule sees it from the
+# media type, its parent; struct reports it too, as the type of Redocly is
+# Schema there.
+# also-fires: struct
 openapi: 3.1.0
 info:
-  title: Fixture rule--subset-pattern-portable--digit-class
+  title: Fixture contracts--subset-boolean-schema--media-type-false
   version: 1.0.0
 servers:
   - url: https://api.hotel-booking.test
@@ -18,8 +21,7 @@ paths:
           description: Offers.
           content:
             application/json:
-              schema:
-                $ref: '#/components/schemas/Result'
+              schema: false
         '400':
           $ref: '../openapi/common.v1.yaml#/components/responses/BadRequest'
         '404':
@@ -36,17 +38,3 @@ paths:
           $ref: '../openapi/common.v1.yaml#/components/responses/ServiceUnavailable'
         '504':
           $ref: '../openapi/common.v1.yaml#/components/responses/GatewayTimeout'
-components:
-  schemas:
-    Result:
-      type: object
-      required: [name]
-      properties:
-        name:
-          type: string
-          maxLength: 100
-        code:
-          type: string
-          maxLength: 10
-          pattern: '^\d{4}(?![\s\S])'
-      additionalProperties: false

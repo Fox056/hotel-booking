@@ -1,5 +1,7 @@
 # The schema of a property of the payload is true, which admits any value:
-# objects with personal data included.
+# objects with personal data included. A boolean schema is outside the subset
+# in any schema, so contracts/subset-boolean-schema fires too.
+# also-fires: contracts/subset-boolean-schema
 asyncapi: 3.0.0
 info:
   title: Fixture contracts--event-closed--boolean-property-schema

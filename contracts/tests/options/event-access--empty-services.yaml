@@ -1,0 +1,9 @@
+# services is empty, so no operation could name its service.
+# expect: option services must be a list
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+async3Rules:
+  contracts/event-access:
+    severity: error
+    services: []

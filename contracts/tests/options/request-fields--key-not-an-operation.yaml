@@ -1,0 +1,18 @@
+# A key of fields, 'POST v1/x', has a path without the leading slash, so it is not "METHOD path".
+# expect: is not "METHOD path"
+extends: []
+plugins: [../../lint/plugin.js]
+telemetry: off
+oas3_1Rules:
+  contracts/request-fields:
+    severity: error
+    allowedRequests: ['POST /v1/hotels/{hotel_id}/bookings', 'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings']
+    fields:
+      'POST /v1/hotels/{hotel_id}/bookings': [room_type_id, check_in_date, check_out_date, rooms, guests, guest,
+        guest.first_name, guest.last_name, guest.email, guest.phone, consent, consent.accepted, consent.text_version,
+        card_token, expected_amount]
+      'POST /v1/channels/{channel_id}/hotels/{hotel_id}/bookings': [external_id, room_types,
+        'room_types[].room_type_code', 'room_types[].rooms', check_in_date, check_out_date, guests, guest,
+        guest.first_name, guest.last_name, guest.email, guest.phone]
+      'POST /v1/channels/{channel_id}/hotels/{hotel_id}/cancellations': [external_id]
+      'POST v1/x': [external_id]
